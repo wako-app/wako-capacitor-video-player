@@ -1,7 +1,7 @@
 {
   "name": "wako-capacitor-video-player",
   "version": "0.0.1",
-  "description": "A capacitor video player",
+  "description": "A capacitor video player for wako.app",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
@@ -19,10 +19,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wako-app/capacitor-video-player.git"
+    "url": "git+https://github.com/wako-app/wako-capacitor-video-player.git"
   },
   "bugs": {
-    "url": "https://github.com/wako-app/capacitor-video-player/issues"
+    "url": "https://github.com/wako-app/wako-capacitor-video-player/issues"
   },
   "keywords": [
     "capacitor",
@@ -45,6 +45,9 @@
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/core": "^7.0.0",
@@ -54,6 +57,7 @@
     "@ionic/prettier-config": "^4.0.0",
     "@ionic/swiftlint-config": "^2.0.0",
     "eslint": "^8.57.0",
+    "hls.js": "^1.4.3",
     "prettier": "^3.4.2",
     "prettier-plugin-java": "^2.6.6",
     "rimraf": "^6.0.1",
@@ -62,7 +66,8 @@
     "typescript": "~4.1.5"
   },
   "peerDependencies": {
-    "@capacitor/core": ">=7.0.0"
+    "@capacitor/core": ">=7.0.0",
+    "hls.js": "^1.4.0"
   },
   "prettier": "@ionic/prettier-config",
   "swiftlint": "@ionic/swiftlint-config",
