@@ -3,13 +3,21 @@ package app.wako.plugins.videoplayer.Utilities;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.provider.OpenableColumns;
+import android.util.TypedValue;
+import android.view.View;
 
 import androidx.documentfile.provider.DocumentFile;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.TrackSelector;
+import androidx.media3.ui.CaptionStyleCompat;
+import androidx.media3.ui.PlayerView;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -122,7 +130,7 @@ public class SubtitleUtils {
      * Removes file extension if present.
      *
      * @param context The Android context
-     * @param uri The URI to extract the filename from
+     * @param uri     The URI to extract the filename from
      * @return The extracted filename without extension
      */
     public static String getFileName(Context context, Uri uri) {
@@ -185,10 +193,36 @@ public class SubtitleUtils {
                 .setLanguage(language)
                 .setRoleFlags(C.ROLE_FLAG_SUBTITLE)
                 .setLabel(subtitleName);
+
         if (selected) {
-            subtitleConfigurationBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT);
+            //  subtitleConfigurationBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT);
         }
         return subtitleConfigurationBuilder.build();
     }
 
+    public static void setSubtitleStyle(
+            String subtitleForegroundColor,
+            String subtitleBackgroundColor,
+            Integer subtitleFontSize,
+            PlayerView playerView
+    ) {
+        int foreground = Color.WHITE;
+        int background = Color.TRANSPARENT;
+        if (subtitleForegroundColor.length() > 4 && subtitleForegroundColor.startsWith("rgba")) {
+            foreground = SubtitleUtils.getColorFromRGBA(subtitleForegroundColor);
+        }
+        if (subtitleBackgroundColor.length() > 4 && subtitleBackgroundColor.startsWith("rgba")) {
+            background = SubtitleUtils.getColorFromRGBA(subtitleBackgroundColor);
+        }
+        playerView
+                .getSubtitleView()
+                .setStyle(
+                        new CaptionStyleCompat(foreground, background, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_NONE, Color.WHITE, null)
+                );
+        playerView.getSubtitleView().setFixedTextSize(TypedValue.COMPLEX_UNIT_DIP, subtitleFontSize);
+
+
+        playerView.getSubtitleView().setVisibility(View.VISIBLE);
+
+    }
 }

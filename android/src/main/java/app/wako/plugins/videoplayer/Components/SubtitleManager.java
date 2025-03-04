@@ -11,6 +11,7 @@ import android.widget.ImageButton;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
+import androidx.media3.common.MediaItem;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
@@ -22,11 +23,13 @@ import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.PlayerControlView;
 
+import app.wako.plugins.videoplayer.FullscreenExoPlayerFragment;
 import app.wako.plugins.videoplayer.R;
 import app.wako.plugins.videoplayer.Utilities.CustomDefaultTrackNameProvider;
 import app.wako.plugins.videoplayer.Utilities.SubtitleUtils;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -59,7 +62,6 @@ public class SubtitleManager {
 
         this.customDefaultTrackNameProvider = new CustomDefaultTrackNameProvider(fragmentContext.getResources());
         try {
-
             // First, access the controller via reflection
             Field controllerField = PlayerView.class.getDeclaredField("controller");
             controllerField.setAccessible(true);
@@ -93,29 +95,36 @@ public class SubtitleManager {
         this.trackSelector = trackSelector;
     }
 
-    public void setSubtitleStyle() {
-        int foreground = Color.WHITE;
-        int background = Color.TRANSPARENT;
-        if (subtitleForegroundColor.length() > 4 && subtitleForegroundColor.startsWith("rgba")) {
-            foreground = SubtitleUtils.getColorFromRGBA(subtitleForegroundColor);
-        }
-        if (subtitleBackgroundColor.length() > 4 && subtitleBackgroundColor.startsWith("rgba")) {
-            background = SubtitleUtils.getColorFromRGBA(subtitleBackgroundColor);
-        }
-        playerView
-                .getSubtitleView()
-                .setStyle(
-                        new CaptionStyleCompat(foreground, background, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_NONE, Color.WHITE, null)
+    public void loadExternalSubtitles(ArrayList<SubtitleItem> subtitles, MediaItem.Builder mediaItemBuilder) {
+        if (!subtitles.isEmpty()) {
+
+            List<MediaItem.SubtitleConfiguration> subtitleConfigurations = new ArrayList<>();
+            for (int i = 0; i < subtitles.size(); i++) {
+                SubtitleItem subtitleItem = subtitles.get(i);
+
+
+                MediaItem.SubtitleConfiguration subtitle = SubtitleUtils.buildSubtitle(
+                        fragmentContext,
+                        Uri.parse(subtitleItem.url),
+                        subtitleItem.name,
+                        subtitleItem.lang,
+                        false
                 );
-        playerView.getSubtitleView().setFixedTextSize(TypedValue.COMPLEX_UNIT_DIP, subtitleFontSize);
 
-        if (player != null && trackSelector != null) {
-            DefaultTrackSelector.Parameters parameters =
-                    ((DefaultTrackSelector) trackSelector).getParameters().buildUpon().setSelectUndeterminedTextLanguage(true).build();
-            trackSelector.setParameters(parameters);
+                subtitleConfigurations.add(subtitle);
+
+            }
+            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations);
         }
+    }
 
-       playerView.getSubtitleView().setVisibility(View.VISIBLE);
+    public void setSubtitleStyle() {
+        SubtitleUtils.setSubtitleStyle(
+                subtitleForegroundColor,
+                subtitleBackgroundColor,
+                subtitleFontSize,
+                playerView
+        );
 
     }
 
@@ -137,7 +146,7 @@ public class SubtitleManager {
         }
 
         this.playerView.setShowSubtitleButton(false);
-        if(totalSubtitles > 1 || totalSubtitles == 0) {
+        if (totalSubtitles != 1 ||true) {
             // Always use the native Android button
             this.playerView.setShowSubtitleButton(true);
             return;
@@ -307,14 +316,6 @@ public class SubtitleManager {
     private Format getCurrentSubtitleTrack() {
         if (player == null) return null;
 
-        // First check if text renderer is disabled
-        if (trackSelector instanceof DefaultTrackSelector defaultTrackSelector) {
-            DefaultTrackSelector.Parameters parameters = defaultTrackSelector.getParameters();
-            if (parameters.getRendererDisabled(getTextRendererIndex())) {
-                return null; // Renderer is disabled, so no subtitle is selected
-            }
-        }
-
         Tracks tracks = player.getCurrentTracks();
         for (Tracks.Group trackGroup : tracks.getGroups()) {
             if (trackGroup.getType() == C.TRACK_TYPE_TEXT && trackGroup.isSelected()) {
@@ -408,73 +409,56 @@ public class SubtitleManager {
     /**
      * Enable or disable subtitles
      *
-     * @param enabled true to enable subtitles, false to disable
+     * @param enabled Whether subtitles should be enabled
      */
     public void enableSubtitles(boolean enabled) {
         if (trackSelector == null || player == null) return;
-        
+
         if (trackSelector instanceof DefaultTrackSelector defaultTrackSelector) {
             DefaultTrackSelector.Parameters.Builder parametersBuilder =
                     defaultTrackSelector.getParameters().buildUpon();
 
-            if (enabled) {
-                // Enable subtitles
-                parametersBuilder
-                    .setRendererDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setDisabledTextTrackSelectionFlags(0)
-                    .setSelectUndeterminedTextLanguage(true)
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT);
-                
-                if (playerView != null && playerView.getSubtitleView() != null) {
-                    playerView.getSubtitleView().setVisibility(View.VISIBLE);
-                }
-            } else {
-                // Disable subtitles by selecting no tracks
-                int textRendererIndex = getTextRendererIndex();
-                if (textRendererIndex != -1) {
-                    try {
-                        // Get the mapped track info
-                        androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo mappedTrackInfo =
-                                defaultTrackSelector.getCurrentMappedTrackInfo();
+            int textRendererIndex = getTextRendererIndex();
+            if (textRendererIndex == -1) return;
 
-                        if (mappedTrackInfo != null) {
-                            // Get the text track groups
-                            TrackGroupArray textTrackGroups = mappedTrackInfo.getTrackGroups(textRendererIndex);
-                            
-                            // Create an empty selection override to select no tracks
-                            DefaultTrackSelector.SelectionOverride override =
-                                    new DefaultTrackSelector.SelectionOverride(0, new int[0]);
-                            
-                            // Apply the override
-                            parametersBuilder.setSelectionOverride(textRendererIndex, textTrackGroups, override);
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error disabling subtitles: " + e.getMessage());
-                    }
+            try {
+                // Get mapped track info for the player
+                androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo mappedTrackInfo =
+                        defaultTrackSelector.getCurrentMappedTrackInfo();
+
+                if (mappedTrackInfo == null) {
+                    Log.e(TAG, "No mapped track info available");
+                    return;
                 }
 
-                // Hide subtitle view
-                if (playerView != null && playerView.getSubtitleView() != null) {
-                    playerView.getSubtitleView().setVisibility(View.GONE);
-                }
-            }
+                // Get track groups for text renderer
+                TrackGroupArray textTrackGroups = mappedTrackInfo.getTrackGroups(textRendererIndex);
 
-            // Apply parameters
-            defaultTrackSelector.setParameters(parametersBuilder.build());
-            
-            // Force UI update
-            if (playerView != null) {
+                if (!enabled) {
+                    // Désactiver les sous-titres en effaçant toutes les sélections et overrides
+                    parametersBuilder.clearSelectionOverrides(textRendererIndex)
+                            .setSelectionOverride(textRendererIndex, textTrackGroups, null);
+                } else {
+                    // Activer les sous-titres (laisse ExoPlayer choisir automatiquement)
+                    parametersBuilder.clearSelectionOverrides(textRendererIndex)
+                            .setRendererDisabled(textRendererIndex, false);
+                }
+
+                // Appliquer les paramètres
+                defaultTrackSelector.setParameters(parametersBuilder.build());
+
+                // Forcer la mise à jour de l'UI
                 playerView.invalidate();
+
+                // Mettre à jour l'état du bouton
+                updateCustomSubtitleButton();
+
+                Log.d(TAG, "Subtitles " + (enabled ? "enabled" : "disabled"));
+            } catch (Exception e) {
+                Log.e(TAG, "Error managing subtitles: " + e.getMessage());
             }
-            
-            // Update button state
-            updateCustomSubtitleButton();
-            
-            Log.d(TAG, "Subtitles " + (enabled ? "enabled" : "disabled"));
         }
     }
-
-
 
 
     /**
@@ -498,7 +482,6 @@ public class SubtitleManager {
     }
 
 
-
     /**
      * Gets the text/subtitle renderer index
      *
@@ -515,91 +498,9 @@ public class SubtitleManager {
         return -1;
     }
 
-    private static String getSubtitleLanguage(Uri uri) {
-        final String path = uri.getPath().toLowerCase();
 
-        if (path.endsWith(".srt")) {
-            int last = path.lastIndexOf(".");
-            int prev = last;
-
-            for (int i = last; i >= 0; i--) {
-                prev = path.indexOf(".", i);
-                if (prev != last)
-                    break;
-            }
-
-            int len = last - prev;
-
-            if (len >= 2 && len <= 6) {
-                // TODO: Validate lang
-                return path.substring(prev + 1, last);
-            }
-        }
-
-        return null;
-    }
-
-
-    /**
-     * Gets all subtitle track groups
-     *
-     * @return Array of text track groups
-     */
-    private Tracks.Group[] getTextTrackGroups() {
-        if (player == null) return new Tracks.Group[0];
-
-        Tracks tracks = player.getCurrentTracks();
-        List<Tracks.Group> textGroups = new java.util.ArrayList<>();
-
-        for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() == C.TRACK_TYPE_TEXT) {
-                textGroups.add(group);
-            }
-        }
-
-        return textGroups.toArray(new Tracks.Group[0]);
-    }
-
-    /**
-     * Gets TrackGroupArray for a specific renderer
-     *
-     * @param rendererIndex The renderer index
-     * @return The TrackGroupArray for this renderer, or null if not available
-     */
-    private TrackGroupArray getRendererTrackGroups(int rendererIndex) {
-        if (player == null || trackSelector == null ||
-                rendererIndex < 0 || rendererIndex >= player.getRendererCount()) {
-            return null;
-        }
-
-        try {
-            // Get mapped track info via track selector
-            if (trackSelector instanceof DefaultTrackSelector) {
-                DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
-                androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo mappedTrackInfo =
-                        defaultTrackSelector.getCurrentMappedTrackInfo();
-
-                if (mappedTrackInfo != null) {
-                    return mappedTrackInfo.getTrackGroups(rendererIndex);
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting renderer track groups: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Converts a TrackGroup to TrackGroupArray for use with setSelectionOverride
-     *
-     * @param group The track group to convert
-     * @return A TrackGroupArray containing the specified group
-     */
-    private TrackGroupArray getTrackGroupArrayFromGroup(TrackGroup group) {
-        if (group == null) return null;
-
-        // Create a new TrackGroupArray containing only this group
-        return new TrackGroupArray(group);
+    public void reset() {
+        this.player = null;
+        this.trackSelector = null;
     }
 }

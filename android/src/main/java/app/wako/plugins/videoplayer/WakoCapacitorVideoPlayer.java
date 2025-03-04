@@ -6,6 +6,8 @@ import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
 
 import com.getcapacitor.JSObject;
+
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.PickerVideo.PickerVideoFragment;
 
 import java.util.ArrayList;
@@ -26,7 +28,7 @@ public class WakoCapacitorVideoPlayer {
         Boolean loopOnEnd,
         Boolean showControls,
         String displayMode,
-        ArrayList<FullscreenExoPlayerFragment.SubtitleItem> subtitles,
+        ArrayList<SubtitleItem> subtitles,
         String preferredLocale,
         JSObject subTitleOptions,
         String title,

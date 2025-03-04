@@ -54,6 +54,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.RenderersFactory;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
@@ -76,7 +77,9 @@ import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+import com.google.common.collect.ImmutableList;
 
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Components.SubtitleManager;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
 import app.wako.plugins.videoplayer.Utilities.SubtitleUtils;
@@ -104,19 +107,6 @@ import java.util.concurrent.Executors;
 public class FullscreenExoPlayerFragment extends Fragment {
     public String videoUrl;
     public Float playbackRate;
-    public String playerId;
-
-    public static class SubtitleItem {
-        public String url;
-        public String name;
-        public String lang;
-
-        public SubtitleItem(String url, String name, String lang) {
-            this.url = url;
-            this.name = name;
-            this.lang = lang;
-        }
-    }
 
     public ArrayList<SubtitleItem> subtitles;
     public String preferredLocale;
@@ -160,7 +150,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private int currentMediaItemIndex = 0;
     private long playbackPosition = 0;
     private Uri videoUri = null;
-    private ArrayList<Uri> subtitleUris = new ArrayList<>();
     private ProgressBar progressBar;
     private View fragmentView;
     private ImageButton closeButton;
@@ -175,7 +164,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private Context fragmentContext;
     private boolean isMuted = false;
     private float currentVolume = (float) 0.5;
-    private boolean isPictureInPicture = false;
     private DefaultTrackSelector trackSelector;
 
     // Current playback position (in milliseconds).
@@ -187,9 +175,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private static final String PLAYBACK_TIME = "play_time";
 
     private MediaSession mediaSession;
-    private PlayerControlView.VisibilityListener visibilityListener;
-    private PackageManager packageManager;
-    final Handler handler = new Handler();
 
 
     private Integer resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
@@ -216,7 +201,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         fragmentContext = container.getContext();
-        packageManager = fragmentContext.getPackageManager();
         fragmentView = inflater.inflate(R.layout.fragment_fs_exoplayer, container, false);
 
         controlsContainer = fragmentView.findViewById(R.id.linearLayout);
@@ -245,6 +229,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.setShowFastForwardButton(false);
         playerView.setShowRewindButton(false);
 
+        playerView.setShowSubtitleButton(true);
 
         this.subtitleManager = new SubtitleManager(
                 fragmentContext,
@@ -319,16 +304,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // check if the video file exists, if not leave
         videoUri = Uri.parse(videoUrl);
         Log.v(TAG, "display video url: " + videoUri);
-
-        // Initialize subtitleUris
-        subtitleUris.clear();
-        if (subtitles != null && !subtitles.isEmpty()) {
-            for (SubtitleItem subtitle : subtitles) {
-                Uri subtitleUri = Uri.parse(subtitle.url);
-                subtitleUris.add(subtitleUri);
-                Log.v(TAG, "display subtitle uri: " + subtitleUri);
-            }
-        }
 
         // get video type
         videoType = getVideoType(videoUri);
@@ -531,7 +506,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
 
-
     /**
      * Lifecycle method called when the fragment becomes visible to the user.
      * Initializes the player if needed and handles Chromecast integration.
@@ -560,20 +534,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
     }
 
-    /**
-     * Lifecycle method called when the fragment is no longer visible to the user.
-     * Releases resources
-     */
-    @Override
-    public void onStop() {
-        super.onStop();
-
-        if (isPictureInPicture) {
-            controlsContainer.setVisibility(View.VISIBLE);
-            playerExit();
-            getActivity().finishAndRemoveTask();
-        }
-    }
 
     /**
      * Lifecycle method called when the fragment is being destroyed.
@@ -584,6 +544,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         super.onDestroy();
         if (isChromecastEnabled) mediaRouter.removeCallback(mediaRouterCallback);
         releasePlayer();
+        NotificationCenter.defaultCenter().removeAllNotifications();
     }
 
     /**
@@ -595,18 +556,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
         super.onPause();
         if (isChromecastEnabled) castContext.removeCastStateListener(castStateListener);
 
-
-        if (!isPictureInPicture) {
-            if (Util.SDK_INT < 24) {
-                if (player != null) player.setPlayWhenReady(false);
-                releasePlayer();
-            } else {
-                pause();
-            }
+        if (Util.SDK_INT < 24) {
+            if (player != null) player.setPlayWhenReady(false);
+            releasePlayer();
         } else {
-            if (controlsContainer.getVisibility() == View.VISIBLE) {
-                controlsContainer.setVisibility(View.INVISIBLE);
-            }
+            pause();
         }
     }
 
@@ -617,21 +571,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public void releasePlayer() {
         if (player != null) {
             playbackPosition = player.getCurrentPosition();
-            currentMediaItemIndex = player.getCurrentWindowIndex();
+            currentMediaItemIndex = player.getCurrentMediaItemIndex();
+            player.release();
+            player = null;
+            trackSelector = null;
+            if (subtitleManager != null) {
+                subtitleManager.reset();
+            }
             if (mediaSession != null) {
                 mediaSession.release();
                 mediaSession = null;
             }
-            player.setRepeatMode(Player.REPEAT_MODE_OFF);
-            player.removeListener(playerListener);
-            player.release();
-            player = null;
-            showSystemUI();
-            resetVariables();
-            if (isChromecastEnabled && castPlayer != null) {
-                castPlayer.release();
-                castPlayer = null;
-            }
+
+            videoType = null;
+            playerView = null;
+            isFirstReady = true;
+            currentMediaItemIndex = 0;
+            playbackPosition = 0;
+            videoUri = null;
+            subtitles.clear();
+            isMuted = false;
+            currentVolume = (float) 0.5;
         }
     }
 
@@ -643,21 +603,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public void onResume() {
         super.onResume();
         //if (isChromecastEnabled && castContext != null) castContext.addCastStateListener(castStateListener);
-        if (!isPictureInPicture) {
-            hideSystemUi();
-            if ((Util.SDK_INT < 24 || player == null)) {
-                initializePlayer();
-            }
-        } else {
-            isPictureInPicture = false;
-            if (
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
-            ) {
-                playerView.setUseController(showControls);
-            }
-/*            if (subtitleUris.size() > 0) {
-                this.subtitleManager.setSubtitles(subtitleUris);
-            }*/
+        hideSystemUi();
+        if ((Util.SDK_INT < 24 || player == null)) {
+            initializePlayer();
         }
     }
 
@@ -706,23 +654,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
 
 
-        DefaultBandwidthMeter bandwidthMeter = new DefaultBandwidthMeter.Builder(fragmentContext).build();
-        //  AdaptiveTrackSelection.Factory videoTrackSelectionFactory = new AdaptiveTrackSelection.Factory();
+        trackSelector = new DefaultTrackSelector(fragmentContext);
 
-        DefaultTrackSelector trackSelector = new DefaultTrackSelector(fragmentContext);
-// Configurer pour garder le renderer actif mais sans sélection par défaut
-        DefaultTrackSelector.Parameters parameters = trackSelector.getParameters()
-                .buildUpon()
-                .setRendererDisabled(C.TRACK_TYPE_TEXT, false) // Renderer actif
-                .clearOverridesOfType(C.TRACK_TYPE_TEXT) // Pas de piste sélectionnée
-                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED) // Empêche toute sélection automatique
-                .build();
-
-        trackSelector.setParameters(parameters);
-
-        this.subtitleManager.setTrackSelector(trackSelector);
-
-        LoadControl loadControl = new DefaultLoadControl();
 
         playerListener = new PlayerListener();
 
@@ -731,15 +664,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         .setSeekBackIncrementMs(10000)
                         .setSeekForwardIncrementMs(10000)
                         .setTrackSelector(trackSelector)
-                        .setLoadControl(loadControl)
-                        .setBandwidthMeter(bandwidthMeter)
                         .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory))
                         .build();
 
+
+        mediaSession = new MediaSession.Builder(fragmentContext, player).build();
+
         player.addListener(playerListener);
-
-        this.subtitleManager.setPlayer(player);
-
 
         playerView.setPlayer(player);
 
@@ -747,46 +678,32 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .setUri(videoUri)
                 .setMimeType(videoType);
 
+
+        this.subtitleManager.setTrackSelector(trackSelector);
+        this.subtitleManager.setPlayer(player);
+        this.subtitleManager.loadExternalSubtitles(subtitles, mediaItemBuilder);
+
         if (shouldLoopOnEnd) {
             player.setRepeatMode(Player.REPEAT_MODE_ONE);
         } else {
             player.setRepeatMode(Player.REPEAT_MODE_OFF);
         }
 
-        if (!subtitleUris.isEmpty()) {
-
-            List<MediaItem.SubtitleConfiguration> subtitleConfigurations = new ArrayList<>();
-            for (int i = 0; i < subtitleUris.size(); i++) {
-                Uri subtitleUri = subtitleUris.get(i);
-                String subtitleName = null;
-                String subtitleLang = null;
-
-                // Retrieve subtitle name and language if available
-                if (subtitles != null && i < subtitles.size()) {
-                    SubtitleItem item = subtitles.get(i);
-                    subtitleName = item.name;
-                    subtitleLang = item.lang;
-                }
-
-                // Use the enhanced version of buildSubtitle with the language parameter
-                MediaItem.SubtitleConfiguration subtitle = SubtitleUtils.buildSubtitle(
-                        fragmentContext,
-                        subtitleUri,
-                        subtitleName,
-                        subtitleLang,
-                        true
-                );
-
-                subtitleConfigurations.add(subtitle);
-            }
-            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations);
-        }
 
         MediaItem mediaItem = mediaItemBuilder.build();
+
 
         player.setMediaItem(mediaItem, startAtSec > 0 ? startAtSec * 1000 : 0);
 
         player.prepare();
+
+        ImmutableList<Tracks.Group> trackGroups = player.getCurrentTracks().getGroups();
+        for (int i = 0; i < trackGroups.size(); i++) {
+            Tracks.Group group = trackGroups.get(i);
+            if (group.getType() == C.TRACK_TYPE_TEXT) {
+                Log.d(TAG, "Sous-titres: ${group.mediaTrackGroup.getFormat(0).language}, sélectionné: ${group.isSelected}");
+            }
+        }
 
         playerView.showController();
 
@@ -796,14 +713,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         this.subtitleManager.setSubtitleStyle();
 
-
-        Map<String, Object> info = new HashMap<String, Object>() {
-            {
-                put("fromPlayerId", playerId);
-            }
-        };
-
-        NotificationCenter.defaultCenter().postNotification("initializePlayer", info);
+        NotificationCenter.defaultCenter().postNotification("initializePlayer", null);
     }
 
     /**
@@ -825,7 +735,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
             Map<String, Object> info = new HashMap<String, Object>() {
                 {
-                    put("fromPlayerId", playerId);
                     put("currentTime", String.valueOf(currentTime));
                 }
             };
@@ -858,7 +767,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         Log.v(TAG, "**** in ExoPlayer.STATE_READY isFirstReady player.isPlaying" + player.isPlaying());
                         player.seekTo(currentMediaItemIndex, playbackPosition);
 
-                        selectTracks();
+                        //   selectTracks();
 
                         // We show progress bar, position and duration only when the video is not live
                         if (!player.isCurrentMediaItemLive()) {
@@ -906,7 +815,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
             Map<String, Object> info = new HashMap<String, Object>() {
                 {
-                    put("fromPlayerId", playerId);
                     put("currentTime", String.valueOf(currentTime));
                 }
             };
@@ -949,11 +857,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 }
             }
 
-            Log.v(TAG, "**** icurrentSubtitleTrack: " + currentSubtitleTrack);
+            Log.v(TAG, "**** currentSubtitleTrack: " + currentSubtitleTrack);
 
             // Create event data
             Map<String, Object> trackInfo = new HashMap<String, Object>();
-            trackInfo.put("fromPlayerId", playerId);
 
             if (currentAudioTrack != null) {
                 Format audioFormat = currentAudioTrack.getFormat(0);
@@ -1008,7 +915,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * @param enabled Whether subtitles should be displayed
      */
     public void enableSubtitles(boolean enabled) {
-        this.subtitleManager.enableSubtitles(enabled);
+
+        // TODO
     }
 
 
@@ -1103,10 +1011,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * @param timeSecond The target position in seconds
      */
     public void setCurrentTime(int timeSecond) {
-        if (isPictureInPicture) {
-            playerView.setUseController(false);
-            controlsContainer.setVisibility(View.INVISIBLE);
-        }
+
         long seekPosition = player.getCurrentPosition() == UNKNOWN_TIME
                 ? 0
                 : Math.min(Math.max(0, timeSecond * 1000), player.getDuration());
@@ -1235,24 +1140,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         return ret;
     }
 
-    /**
-     * Resets all player state variables to their default values.
-     * Called when preparing for a new playback session.
-     */
-    private void resetVariables() {
-        videoType = null;
-        playerView = null;
-        isFirstReady = true;
-        currentMediaItemIndex = 0;
-        playbackPosition = 0;
-        videoUri = null;
-        subtitles.clear();
-        subtitleUris.clear();
-        isMuted = false;
-        currentVolume = (float) 0.5;
-    }
-
-
 
     /**
      * Initializes the Chromecast service.
@@ -1354,7 +1241,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                         public void onPlayerStateChanged(boolean playWhenReady, int state) {
                                             Map<String, Object> info = new HashMap<String, Object>() {
                                                 {
-                                                    put("fromPlayerId", playerId);
                                                     put("currentTime", String.valueOf(player.getCurrentPosition() / 1000));
                                                 }
                                             };
@@ -1440,8 +1326,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 // Apply the selected format if found
                 if (selectedFormat != null) {
-                    ((DefaultTrackSelector) trackSelector).setParameters(
-                            ((DefaultTrackSelector) trackSelector).buildUponParameters().setPreferredAudioLanguage(selectedFormat.language)
+                    trackSelector.setParameters(
+                            trackSelector.buildUponParameters().setPreferredAudioLanguage(selectedFormat.language)
                     );
                     audioSelected = true;
                     enableSubtitles(false);
@@ -1484,8 +1370,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 // Apply the selected format if found
                 if (selectedFormat != null) {
-                    ((DefaultTrackSelector) trackSelector).setParameters(
-                            ((DefaultTrackSelector) trackSelector).buildUponParameters().setPreferredTextLanguage(selectedFormat.language)
+                    (trackSelector).setParameters(
+                            (trackSelector).buildUponParameters().setPreferredTextLanguage(selectedFormat.language)
                     );
                     subtitleSelected = true;
                 }
@@ -1498,8 +1384,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
                         Format format = trackGroup.getMediaTrackGroup().getFormat(0);
                         if (format.language != null && format.language.equals(preferredLocale)) {
-                            ((DefaultTrackSelector) trackSelector).setParameters(
-                                    ((DefaultTrackSelector) trackSelector).buildUponParameters()
+                            (trackSelector).setParameters(
+                                    (trackSelector).buildUponParameters()
                                             .setPreferredAudioLanguage(preferredLocale)
                             );
                             trackFound = true;

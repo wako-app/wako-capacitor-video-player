@@ -16,6 +16,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Notifications.MyRunnable;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
 import app.wako.plugins.videoplayer.PickerVideo.PickerVideoFragment;
@@ -116,7 +117,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         isTV = isTvDevice(context);
         Log.d(TAG, "**** isTvDevice " + isTV + " ****");
 
-
         videoRate = 1f;
         if (call.getData().has("rate")) {
             Float mRate = call.getFloat("rate");
@@ -137,7 +137,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         }
         if (!exitOnEnd) loopOnEnd = _loopOnEnd;
 
-
         Boolean _showControls = true;
         if (call.getData().has("showControls")) {
             _showControls = call.getBoolean("showControls");
@@ -156,6 +155,10 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
+
+        // Reset subtitles for each new video
+        subtitles = null;
+        
         if (call.getData().has("subtitles")) {
             try {
                 subtitles = call.getArray("subtitles");
@@ -836,7 +839,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         }
 
         // get the subTitlePath if any
-        ArrayList<FullscreenExoPlayerFragment.SubtitleItem> subtitleItems = new ArrayList<>();
+        ArrayList<SubtitleItem> subtitleItems = new ArrayList<>();
         if (subtitles != null && subtitles.length() > 0) {
             for (int i = 0; i < subtitles.length(); i++) {
                 try {
@@ -860,7 +863,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                         String subTitlePath = filesUtils.getFilePath(url);
                         String name = subtitleObj.has("name") ? subtitleObj.getString("name") : null;
                         String lang = subtitleObj.has("lang") ? subtitleObj.getString("lang") : null;
-                        subtitleItems.add(new FullscreenExoPlayerFragment.SubtitleItem(subTitlePath, name, lang));
+                        subtitleItems.add(new SubtitleItem(subTitlePath, name, lang));
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error parsing subtitle item: " + e.getMessage());
