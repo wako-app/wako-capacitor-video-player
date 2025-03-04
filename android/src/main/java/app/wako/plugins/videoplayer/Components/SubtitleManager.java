@@ -60,12 +60,12 @@ public class SubtitleManager {
         this.customDefaultTrackNameProvider = new CustomDefaultTrackNameProvider(fragmentContext.getResources());
         try {
 
-            // D'abord, accéder au contrôleur via réflexion
+            // First, access the controller via reflection
             Field controllerField = PlayerView.class.getDeclaredField("controller");
             controllerField.setAccessible(true);
             PlayerControlView controlView = (PlayerControlView) controllerField.get(playerView);
 
-            // Puis définir le trackNameProvider
+            // Then set the trackNameProvider
             final Field field = PlayerControlView.class.getDeclaredField("trackNameProvider");
             field.setAccessible(true);
             field.set(controlView, customDefaultTrackNameProvider);
@@ -115,15 +115,15 @@ public class SubtitleManager {
             trackSelector.setParameters(parameters);
         }
 
-       // playerView.getSubtitleView().setVisibility(View.VISIBLE);
+       playerView.getSubtitleView().setVisibility(View.VISIBLE);
 
     }
 
     /**
-     * Met à jour l'état du bouton personnalisé de sous-titres
+     * Updates the state of the custom subtitle button
      */
     public void updateCustomSubtitleButton() {
-        // Vérifier si des pistes de sous-titres sont disponibles
+        // Check if subtitle tracks are available
         int totalSubtitles = 0;
         boolean hasSubtitleTracks = false;
         if (player != null) {
@@ -138,17 +138,17 @@ public class SubtitleManager {
 
         this.playerView.setShowSubtitleButton(false);
         if(totalSubtitles > 1 || totalSubtitles == 0) {
-            // Toujours utiliser le bouton natif d'Android
+            // Always use the native Android button
             this.playerView.setShowSubtitleButton(true);
             return;
         }
-        // Mettre à jour notre bouton personnalisé uniquement si nécessaire
+        // Update our custom button only if necessary
         ImageButton subtitleButton = fragmentView.findViewById(R.id.custom_subtitle_toggle);
         if (subtitleButton != null) {
-            // Afficher le bouton uniquement si des sous-titres sont disponibles
+            // Show button only if subtitles are available
             subtitleButton.setVisibility(hasSubtitleTracks ? View.VISIBLE : View.GONE);
 
-            // Mettre à jour l'icône en fonction de l'état des sous-titres
+            // Update icon based on subtitle state
             Format currentSubtitleTrack = getCurrentSubtitleTrack();
             if (currentSubtitleTrack != null) {
                 subtitleButton.setImageResource(R.drawable.ic_subtitle_on);
@@ -156,7 +156,7 @@ public class SubtitleManager {
                 subtitleButton.setImageResource(R.drawable.ic_subtitle_off);
             }
 
-            // Configurer le menu contextuel pour afficher les pistes de sous-titres disponibles
+            // Configure context menu to display available subtitle tracks
             if (hasSubtitleTracks) {
                 subtitleButton.setOnClickListener(new View.OnClickListener() {
                     @Override
@@ -169,60 +169,59 @@ public class SubtitleManager {
     }
 
     /**
-     * Affiche un menu contextuel avec toutes les pistes de sous-titres disponibles
+     * Displays a context menu with all available subtitle tracks
      *
-     * @param anchorView Vue sur laquelle ancrer le menu
+     * @param anchorView View to anchor the menu to
      */
     private void showSubtitleTracksMenu(View anchorView) {
         if (player == null || trackSelector == null) return;
 
-        // Créer un menu contextuel (PopupMenu) avec un style personnalisé pour l'opacité
+        // Create a context menu (PopupMenu) with custom style for opacity
         Context wrapper = new ContextThemeWrapper(fragmentContext, R.style.PopupMenuStyle);
         androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(wrapper, anchorView);
         android.view.Menu menu = popup.getMenu();
 
-        // Configurer l'affichage des icônes dans le menu
+        // Configure icon display in the menu
         setupPopupMenuIcons(menu);
 
-        // Ajouter l'option pour désactiver les sous-titres
+        // Add option to disable subtitles
         android.view.MenuItem disableItem = menu.add(0, -1, 0, getTranslatedString("disable_subtitles", "Disable"));
 
-        // Récupérer les pistes de sous-titres disponibles
+        // Get available subtitle tracks
         Tracks tracks = player.getCurrentTracks();
         int trackNumber = 0;
 
-        // Récupérer la piste de sous-titres actuellement sélectionnée
+        // Get currently selected subtitle track
         Format currentSubtitleFormat = getCurrentSubtitleTrack();
 
-        // Si aucun sous-titre n'est sélectionné, marquer l'option "Désactiver" comme active
+        // If no subtitle is selected, mark the "Disable" option as active
         if (currentSubtitleFormat == null) {
             disableItem.setChecked(true);
             disableItem.setIcon(R.drawable.ic_check);
         }
 
-        // Parcourir toutes les pistes de sous-titres et les ajouter au menu
+        // Loop through all subtitle tracks and add them to the menu
         for (Tracks.Group trackGroup : tracks.getGroups()) {
             if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
                 TrackGroup group = trackGroup.getMediaTrackGroup();
                 for (int i = 0; i < group.length; i++) {
                     Format format = group.getFormat(i);
 
-                    // Toujours commencer par le nom de la langue
+                    // Always start with the language name
                     String trackName = customDefaultTrackNameProvider.getTrackName(format);
 
-                    // Ajouter la piste au menu
+                    // Add track to menu
                     android.view.MenuItem item = menu.add(0, trackNumber, i + 1, trackName);
 
-                    // Marquer la piste active avec une coche
+                    // Mark active track with a checkmark
                     boolean isSelected = false;
                     if (currentSubtitleFormat != null) {
-                        // Vérifier par ID si disponible
+                        // Check by ID if available
                         if (format.id != null && currentSubtitleFormat.id != null &&
                                 format.id.equals(currentSubtitleFormat.id)) {
                             isSelected = true;
                         }
                     }
-
 
                     if (isSelected) {
                         item.setChecked(true);
@@ -234,14 +233,14 @@ public class SubtitleManager {
             }
         }
 
-        // Configurer le playerListener pour gérer les sélections
+        // Configure playerListener to handle selections
         popup.setOnMenuItemClickListener(new androidx.appcompat.widget.PopupMenu.OnMenuItemClickListener() {
             @Override
             public boolean onMenuItemClick(android.view.MenuItem item) {
                 int id = item.getItemId();
 
                 if (id == -1) {
-                    // Désactiver les sous-titres
+                    // Disable subtitles
                     enableSubtitles(false);
                     return true;
                 }
@@ -269,31 +268,31 @@ public class SubtitleManager {
             }
         });
 
-        // Afficher le menu
+        // Show menu
         popup.show();
     }
 
 
     /**
-     * Récupère une chaîne traduite
-     * Utilise d'abord les chaînes du système Android si disponibles
+     * Gets a translated string
+     * First uses Android system strings if available
      *
-     * @param key          Identifiant de la chaîne
-     * @param defaultValue Valeur par défaut si la traduction n'est pas disponible
-     * @return Chaîne traduite
+     * @param key          String identifier
+     * @param defaultValue Default value if translation is not available
+     * @return Translated string
      */
     private String getTranslatedString(String key, String defaultValue) {
-        // Cas spécifiques pour les chaînes système courantes
+        // Specific cases for common system strings
         if (key.equals("disable_subtitles")) {
             return fragmentContext.getResources().getString(android.R.string.no);
         } else if (key.equals("track")) {
             return fragmentContext.getResources().getString(android.R.string.untitled);
         } else if (key.equals("unknown_language")) {
-            return "Langue inconnue"; // Pas de chaîne système équivalente
+            return "Unknown language"; // No equivalent system string
         } else if (key.equals("subtitles_on")) {
-            return "Sous-titres activés"; // Pas de chaîne système équivalente
+            return "Subtitles enabled"; // No equivalent system string
         } else if (key.equals("subtitles_off")) {
-            return "Sous-titres désactivés"; // Pas de chaîne système équivalente
+            return "Subtitles disabled"; // No equivalent system string
         }
 
         return defaultValue;
@@ -301,18 +300,18 @@ public class SubtitleManager {
 
 
     /**
-     * Récupère la piste de sous-titres actuellement sélectionnée
+     * Gets the currently selected subtitle track
      *
-     * @return Format de la piste de sous-titres active, ou null si aucune n'est active
+     * @return Format of the active subtitle track, or null if none is active
      */
     private Format getCurrentSubtitleTrack() {
         if (player == null) return null;
 
-        // Vérifier d'abord si le renderer de texte est désactivé
+        // First check if text renderer is disabled
         if (trackSelector instanceof DefaultTrackSelector defaultTrackSelector) {
             DefaultTrackSelector.Parameters parameters = defaultTrackSelector.getParameters();
             if (parameters.getRendererDisabled(getTextRendererIndex())) {
-                return null; // Le renderer est désactivé, donc aucun sous-titre n'est sélectionné
+                return null; // Renderer is disabled, so no subtitle is selected
             }
         }
 
@@ -332,26 +331,26 @@ public class SubtitleManager {
 
 
     /**
-     * Sélectionne une piste de sous-titres spécifique
+     * Selects a specific subtitle track
      *
-     * @param trackId ID de la piste à sélectionner
+     * @param trackId ID of the track to select
      */
     private void selectSubtitleTrack(String trackId) {
         if (player == null || trackSelector == null) return;
 
-        // Activer les sous-titres d'abord
+        // Enable subtitles first
         enableSubtitles(true);
 
         if (trackSelector instanceof DefaultTrackSelector defaultTrackSelector) {
             DefaultTrackSelector.Parameters.Builder parametersBuilder =
                     defaultTrackSelector.getParameters().buildUpon();
 
-            // Réinitialiser d'abord toute sélection précédente
+            // First reset all previous selections
             parametersBuilder
                     .clearSelectionOverrides()
                     .setRendererDisabled(C.TRACK_TYPE_TEXT, false);
 
-            // Trouver l'index du renderer de texte
+            // Find text renderer index
             int textRendererIndex = getTextRendererIndex();
             if (textRendererIndex == -1) {
                 Log.e(TAG, "No text renderer found");
@@ -359,7 +358,7 @@ public class SubtitleManager {
             }
 
             try {
-                // Obtenir les informations de piste mappées pour le lecteur
+                // Get mapped track info for the player
                 androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo mappedTrackInfo =
                         defaultTrackSelector.getCurrentMappedTrackInfo();
 
@@ -368,10 +367,10 @@ public class SubtitleManager {
                     return;
                 }
 
-                // Obtenir les groupes de pistes pour le renderer de texte
+                // Get track groups for text renderer
                 TrackGroupArray textTrackGroups = mappedTrackInfo.getTrackGroups(textRendererIndex);
 
-                // Chercher la piste avec l'ID spécifié
+                // Search for track with specified ID
                 for (int groupIndex = 0; groupIndex < textTrackGroups.length; groupIndex++) {
                     TrackGroup group = textTrackGroups.get(groupIndex);
 
@@ -381,16 +380,16 @@ public class SubtitleManager {
                         if (Objects.equals(format.id, trackId)) {
                             Log.d(TAG, "Found subtitle track with ID: " + trackId);
 
-                            // Créer un override pour sélectionner uniquement cette piste
+                            // Create an override to select only this track
                             int[] selectedTracks = new int[]{trackIndex};
                             DefaultTrackSelector.SelectionOverride override =
                                     new DefaultTrackSelector.SelectionOverride(groupIndex, selectedTracks);
 
-                            // Appliquer l'override
+                            // Apply the override
                             parametersBuilder.setSelectionOverride(textRendererIndex, textTrackGroups, override);
                             defaultTrackSelector.setParameters(parametersBuilder.build());
 
-                            // Forcer la mise à jour de l'UI
+                            // Force UI update
                             playerView.invalidate();
                             this.updateCustomSubtitleButton();
 
@@ -479,13 +478,13 @@ public class SubtitleManager {
 
 
     /**
-     * Configure l'affichage des icônes dans le menu popup
+     * Configure icon display in the popup menu
      *
-     * @param menu Menu à configurer
+     * @param menu Menu to configure
      */
     private void setupPopupMenuIcons(android.view.Menu menu) {
         try {
-            // Utiliser la réflexion pour accéder à la méthode setOptionalIconsVisible
+            // Use reflection to access setOptionalIconsVisible method
             Class<?> menuClass = Class.forName("androidx.appcompat.view.menu.MenuBuilder");
             if (menu.getClass().equals(menuClass)) {
                 java.lang.reflect.Method setOptionalIconsVisible =
@@ -501,9 +500,9 @@ public class SubtitleManager {
 
 
     /**
-     * Récupère l'index du renderer de texte/sous-titres
+     * Gets the text/subtitle renderer index
      *
-     * @return l'index du renderer de texte, ou -1 si non trouvé
+     * @return the text renderer index, or -1 if not found
      */
     private int getTextRendererIndex() {
         if (player == null) return -1;
@@ -542,9 +541,9 @@ public class SubtitleManager {
 
 
     /**
-     * Récupère tous les groupes de pistes de sous-titres
+     * Gets all subtitle track groups
      *
-     * @return Tableau des groupes de pistes de texte
+     * @return Array of text track groups
      */
     private Tracks.Group[] getTextTrackGroups() {
         if (player == null) return new Tracks.Group[0];
@@ -562,10 +561,10 @@ public class SubtitleManager {
     }
 
     /**
-     * Obtient les TrackGroupArray pour un renderer spécifique
+     * Gets TrackGroupArray for a specific renderer
      *
-     * @param rendererIndex L'index du renderer
-     * @return Le TrackGroupArray pour ce renderer, ou null si non disponible
+     * @param rendererIndex The renderer index
+     * @return The TrackGroupArray for this renderer, or null if not available
      */
     private TrackGroupArray getRendererTrackGroups(int rendererIndex) {
         if (player == null || trackSelector == null ||
@@ -574,7 +573,7 @@ public class SubtitleManager {
         }
 
         try {
-            // Obtenir les informations de piste mappées via le sélecteur de pistes
+            // Get mapped track info via track selector
             if (trackSelector instanceof DefaultTrackSelector) {
                 DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
                 androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo mappedTrackInfo =
@@ -592,15 +591,15 @@ public class SubtitleManager {
     }
 
     /**
-     * Convertit un TrackGroup en TrackGroupArray pour utilisation avec setSelectionOverride
+     * Converts a TrackGroup to TrackGroupArray for use with setSelectionOverride
      *
-     * @param group Le groupe de pistes à convertir
-     * @return Un TrackGroupArray contenant le groupe spécifié
+     * @param group The track group to convert
+     * @return A TrackGroupArray containing the specified group
      */
     private TrackGroupArray getTrackGroupArrayFromGroup(TrackGroup group) {
         if (group == null) return null;
 
-        // Créer un nouveau TrackGroupArray contenant uniquement ce groupe
+        // Create a new TrackGroupArray containing only this group
         return new TrackGroupArray(group);
     }
 }

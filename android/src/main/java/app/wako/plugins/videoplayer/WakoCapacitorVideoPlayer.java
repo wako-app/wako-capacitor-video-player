@@ -20,25 +20,21 @@ public class WakoCapacitorVideoPlayer {
 
     @OptIn(markerClass = UnstableApi.class)
     public FullscreenExoPlayerFragment createFullScreenFragment(
-        String videoPath,
+        String videoUrl,
         Float videoRate,
         Boolean exitOnEnd,
         Boolean loopOnEnd,
-        Boolean pipEnabled,
-        Boolean bkModeEnabled,
         Boolean showControls,
         String displayMode,
         ArrayList<FullscreenExoPlayerFragment.SubtitleItem> subtitles,
-        String preferredLanguage,
+        String preferredLocale,
         JSObject subTitleOptions,
-        JSObject headers,
         String title,
         String smallTitle,
         String accentColor,
         Boolean chromecast,
         String artwork,
         Boolean isTV,
-        String playerId,
         String subtitleTrackId,
         String subtitleLocale,
         String audioTrackId,
@@ -47,27 +43,21 @@ public class WakoCapacitorVideoPlayer {
     ) {
         FullscreenExoPlayerFragment fsFragment = new FullscreenExoPlayerFragment();
 
-        fsFragment.videoPath = videoPath;
+        fsFragment.videoUrl = videoUrl;
         fsFragment.playbackRate = videoRate;
         fsFragment.shouldExitOnEnd = exitOnEnd;
         fsFragment.shouldLoopOnEnd = loopOnEnd;
-        fsFragment.isPipEnabled = pipEnabled;
-        fsFragment.isBackgroundModeEnabled = bkModeEnabled;
         fsFragment.showControls = showControls;
         fsFragment.displayMode = displayMode;
         fsFragment.subtitles = subtitles;
-        fsFragment.preferredLocale = preferredLanguage;
+        fsFragment.preferredLocale = preferredLocale;
         fsFragment.subTitleOptions = subTitleOptions;
-        fsFragment.requestHeaders = headers;
         fsFragment.videoTitle = title;
         fsFragment.videoSubtitle = smallTitle;
         fsFragment.themeColor = accentColor;
         fsFragment.isChromecastEnabled = chromecast;
         fsFragment.posterUrl = artwork;
         fsFragment.isTvDevice = isTV;
-        fsFragment.playerId = playerId;
-        fsFragment.isLocalFile = false;
-        fsFragment.videoId = null;
         fsFragment.subtitleTrackId = subtitleTrackId;
         fsFragment.subtitleLocale = subtitleLocale;
         fsFragment.audioTrackId = audioTrackId;

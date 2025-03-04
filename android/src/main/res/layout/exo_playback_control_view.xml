@@ -115,14 +115,6 @@
           android:background="?actionBarItemBackground"
           android:visibility="gone"/>
 
-        <ImageButton
-          android:id="@+id/exo_pip"
-          android:layout_width="48dp"
-          android:layout_height="48dp"
-          android:background="?actionBarItemBackground"
-          android:src="@drawable/ic_pip_white"
-          android:visibility="gone"
-          android:contentDescription="Picture in picture button"/>
 
         <ImageButton
           android:id="@+id/exo_resize"

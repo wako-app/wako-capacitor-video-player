@@ -48,19 +48,12 @@ import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
-import androidx.media3.datasource.DataSource;
-import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.RenderersFactory;
-import androidx.media3.exoplayer.dash.DashMediaSource;
-import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
@@ -83,6 +76,7 @@ import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+
 import app.wako.plugins.videoplayer.Components.SubtitleManager;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
 import app.wako.plugins.videoplayer.Utilities.SubtitleUtils;
@@ -101,8 +95,6 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
-import org.json.JSONException;
-
 /**
  * Fragment that handles full-screen video playback using ExoPlayer.
  * Provides functionality for video playback, subtitle display, picture-in-picture mode,
@@ -110,9 +102,10 @@ import org.json.JSONException;
  */
 @UnstableApi
 public class FullscreenExoPlayerFragment extends Fragment {
-    public String videoPath;
+    public String videoUrl;
     public Float playbackRate;
     public String playerId;
+
     public static class SubtitleItem {
         public String url;
         public String name;
@@ -128,14 +121,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public ArrayList<SubtitleItem> subtitles;
     public String preferredLocale;
     public JSObject subTitleOptions;
-    public JSObject requestHeaders;
     public Boolean isTvDevice;
-    public Boolean isLocalFile;
-    public Long videoId;
     public Boolean shouldExitOnEnd;
     public Boolean shouldLoopOnEnd;
-    public Boolean isPipEnabled;
-    public Boolean isBackgroundModeEnabled;
     public Boolean showControls;
     public String displayMode = "all";
     public String videoTitle;
@@ -176,7 +164,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private ProgressBar progressBar;
     private View fragmentView;
     private ImageButton closeButton;
-    private ImageButton pipButton;
     private ImageButton resizeButton;
     private LinearLayout controlsContainer;
     private static ImageView castImage;
@@ -190,8 +177,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private float currentVolume = (float) 0.5;
     private boolean isPictureInPicture = false;
     private DefaultTrackSelector trackSelector;
+
     // Current playback position (in milliseconds).
-    private int lastKnownPosition;
     private int totalDuration;
     private static final int seekStep = 10000;
     private boolean isCasting = false;
@@ -200,17 +187,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private static final String PLAYBACK_TIME = "play_time";
 
     private MediaSession mediaSession;
-    // private MediaSessionConnector mediaSessionConnector;
     private PlayerControlView.VisibilityListener visibilityListener;
     private PackageManager packageManager;
-    private Boolean isPipModeEnabled = true;
     final Handler handler = new Handler();
-    final Runnable pipCheckRunnable = new Runnable() {
-        @RequiresApi(api = Build.VERSION_CODES.N)
-        public void run() {
-            checkPIPPermission();
-        }
-    };
+
 
     private Integer resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
     private MediaRouteButton mediaRouteButton;
@@ -229,8 +209,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Creates and configures the fragment view with all necessary UI components.
      * Sets up player controls, event listeners, and initializes video playback.
      *
-     * @param inflater The LayoutInflater object to inflate views
-     * @param container The parent view that the fragment UI should be attached to
+     * @param inflater           The LayoutInflater object to inflate views
+     * @param container          The parent view that the fragment UI should be attached to
      * @param savedInstanceState Previous state of the fragment if being re-constructed
      * @return The View for the fragment's UI
      */
@@ -253,7 +233,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         castImage = fragmentView.findViewById(R.id.cast_image);
         mediaRouteButton = fragmentView.findViewById(R.id.media_route_button);
         closeButton = fragmentView.findViewById(R.id.exo_close);
-        pipButton = fragmentView.findViewById(R.id.exo_pip);
 
 
         videoProgressBar.setVisibility(View.GONE);
@@ -270,8 +249,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
         this.subtitleManager = new SubtitleManager(
                 fragmentContext,
                 fragmentView,
-                subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "rgba(255,255,255,1)",
-                subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "rgba(0,0,0,1)",
+                subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "",
+                subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "",
                 subTitleOptions.has("fontSize") ? subTitleOptions.getInteger("fontSize") : 16,
                 preferredLocale
         );
@@ -309,8 +288,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
             videoProgressBar.setScrubberColor(Color.parseColor(themeColor));
         }
 
-        //playerView.requestFocus();
+        playerView.requestFocus();
+
         controlsContainer.setVisibility(View.INVISIBLE);
+
         playerView.setControllerShowTimeoutMs(3000);
         playerView.setControllerVisibilityListener(
                 new PlayerView.ControllerVisibilityListener() {
@@ -322,7 +303,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         );
 
 
-        Log.v(TAG, "display url: " + videoPath);
+        Log.v(TAG, "display url: " + videoUrl);
         if (subtitles != null && !subtitles.isEmpty()) {
             for (SubtitleItem subtitle : subtitles) {
                 Log.v(TAG, "display subtitle url: " + subtitle.url);
@@ -336,10 +317,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
 
         // check if the video file exists, if not leave
-        File file = new File(videoPath);
-        videoUri = Uri.parse(videoPath);
+        videoUri = Uri.parse(videoUrl);
         Log.v(TAG, "display video url: " + videoUri);
-        
+
         // Initialize subtitleUris
         subtitleUris.clear();
         if (subtitles != null && !subtitles.isEmpty()) {
@@ -354,91 +334,83 @@ public class FullscreenExoPlayerFragment extends Fragment {
         videoType = getVideoType(videoUri);
         Log.v(TAG, "display videoType: " + videoType);
 
-        if (videoUri != null || isLocalFile) {
-            // go fullscreen
-            getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            if (savedInstanceState != null) {
-                lastKnownPosition = savedInstanceState.getInt(PLAYBACK_TIME);
-            }
-
-            getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    // Set the onKey playerListener
-                                    fragmentView.setFocusableInTouchMode(true);
-                                    fragmentView.requestFocus();
-                                    fragmentView.setOnKeyListener(
-                                            new View.OnKeyListener() {
-                                                @Override
-                                                public boolean onKey(View v, int keyCode, KeyEvent event) {
-                                                    if (event.getAction() == KeyEvent.ACTION_UP) {
-                                                        long videoPosition = player.getCurrentPosition();
-                                                        Log.v(TAG, "$$$$ onKey " + keyCode + " $$$$");
-                                                        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_HOME) {
-                                                            Log.v(TAG, "$$$$ Going to backpress $$$$");
-                                                            backPressed();
-                                                        } else if (isTvDevice) {
-                                                            switch (keyCode) {
-                                                                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                                                                    fastForward(videoPosition, 1);
-                                                                    break;
-                                                                case KeyEvent.KEYCODE_DPAD_LEFT:
-                                                                    rewind(videoPosition, 1);
-                                                                    break;
-                                                                case KeyEvent.KEYCODE_DPAD_CENTER:
-                                                                    play_pause();
-                                                                    break;
-                                                                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                                                                    fastForward(videoPosition, 2);
-                                                                    break;
-                                                                case KeyEvent.KEYCODE_MEDIA_REWIND:
-                                                                    rewind(videoPosition, 2);
-                                                                    break;
-                                                            }
-                                                        }
-                                                        return true;
-                                                    } else {
-                                                        return false;
-                                                    }
-                                                }
-                                            }
-                                    );
-
-
-                                    closeButton.setOnClickListener(
-                                            new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    playerExit();
-                                                }
-                                            }
-                                    );
-                                    pipButton.setOnClickListener(
-                                            new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    pictureInPictureMode();
-                                                }
-                                            }
-                                    );
-                                    resizeButton.setOnClickListener(
-                                            new View.OnClickListener() {
-                                                @Override
-                                                public void onClick(View view) {
-                                                    resizePressed();
-                                                }
-                                            }
-                                    );
-                                }
-                            }
-                    );
-        } else {
+        if (videoUri == null) {
             Log.d(TAG, "Video path wrong or type not supported");
             Toast.makeText(fragmentContext, "Video path wrong or type not supported", Toast.LENGTH_SHORT).show();
+            return fragmentView;
         }
+        // go fullscreen
+        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+
+        getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                // Set the onKey playerListener
+                                fragmentView.setFocusableInTouchMode(true);
+                                fragmentView.requestFocus();
+                                fragmentView.setOnKeyListener(
+                                        new View.OnKeyListener() {
+                                            @Override
+                                            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                                                if (event.getAction() == KeyEvent.ACTION_UP) {
+                                                    long videoPosition = player.getCurrentPosition();
+                                                    Log.v(TAG, "$$$$ onKey " + keyCode + " $$$$");
+                                                    if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_HOME) {
+                                                        Log.v(TAG, "$$$$ Going to backpress $$$$");
+                                                        backPressed();
+                                                    } else if (isTvDevice) {
+                                                        switch (keyCode) {
+                                                            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                                                                fastForward(videoPosition, 1);
+                                                                break;
+                                                            case KeyEvent.KEYCODE_DPAD_LEFT:
+                                                                rewind(videoPosition, 1);
+                                                                break;
+                                                            case KeyEvent.KEYCODE_DPAD_CENTER:
+                                                                play_pause();
+                                                                break;
+                                                            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                                                                fastForward(videoPosition, 2);
+                                                                break;
+                                                            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                                                                rewind(videoPosition, 2);
+                                                                break;
+                                                        }
+                                                    }
+                                                    return true;
+                                                } else {
+                                                    return false;
+                                                }
+                                            }
+                                        }
+                                );
+
+
+                                closeButton.setOnClickListener(
+                                        new View.OnClickListener() {
+                                            @Override
+                                            public void onClick(View view) {
+                                                playerExit();
+                                            }
+                                        }
+                                );
+
+                                resizeButton.setOnClickListener(
+                                        new View.OnClickListener() {
+                                            @Override
+                                            public void onClick(View view) {
+                                                resizePressed();
+                                            }
+                                        }
+                                );
+                            }
+                        }
+                );
+
         return fragmentView;
     }
 
@@ -506,22 +478,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     private void backPressed() {
         playerExit();
-       /* if (isCasting) {
-            playerExit();
-            return;
-        }
-        if (
-                !isPictureInPicture &&
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
-                        packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) &&
-                        isPipModeEnabled &&
-                        isPipEnabled &&
-                        isPlayerReady // <- isPlayerReady: this prevents a crash if the user presses back before the player is ready (when enters in pip mode and tries to get the aspect ratio)
-        ) {
-            pictureInPictureMode();
-        } else {
-            playerExit();
-        }*/
     }
 
     /**
@@ -567,7 +523,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
       mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     }
 */
-        // We control if the user lock the screen when the player is in pip mode
         try {
             NotificationCenter.defaultCenter().postNotification("playerFullscreenDismiss", info);
         } catch (Exception e) {
@@ -575,54 +530,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
     }
 
-    /**
-     * Enters picture-in-picture mode if supported by the device.
-     * Configures PIP parameters and adapts the UI for PIP display.
-     */
-    private void pictureInPictureMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
-            playerView.setUseController(false);
-            playerView.setControllerAutoShow(false);
-            controlsContainer.setVisibility(View.INVISIBLE);
-            Log.v(TAG, "PIP break 1");
-            // require android O or higher
-            if (
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
-            ) {
-                PictureInPictureParams.Builder pictureInPictureParams = new PictureInPictureParams.Builder();
-                // setup height and width of the PIP window
-                Rational aspectRatio = new Rational(player.getVideoFormat().width, player.getVideoFormat().height);
-                pictureInPictureParams.setAspectRatio(aspectRatio).build();
-                getActivity().enterPictureInPictureMode(pictureInPictureParams.build());
-                Log.v(TAG, "PIP break 2");
-            } else {
-                getActivity().enterPictureInPictureMode();
-                Log.v(TAG, "PIP break 3");
-            }
-            isPictureInPicture = getActivity().isInPictureInPictureMode();
-            if (subtitleUris.size() > 0) {
-               // this.subtitleManager.setSubtitles(subtitleUris);
-            }
-            if (player != null) play();
 
-            handler.postDelayed(pipCheckRunnable, 100);
-            Log.v(TAG, "PIP break 4");
-        } else {
-            Log.v(TAG, "pictureInPictureMode: doesn't support PIP");
-        }
-    }
-
-    /**
-     * Checks if picture-in-picture mode is supported and enabled.
-     * Called periodically to verify PIP permissions.
-     */
-    @RequiresApi(api = Build.VERSION_CODES.N)
-    private void checkPIPPermission() {
-        isPipModeEnabled = isPictureInPicture;
-        if (!isPictureInPicture) {
-            backPressed();
-        }
-    }
 
     /**
      * Lifecycle method called when the fragment becomes visible to the user.
@@ -654,14 +562,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     /**
      * Lifecycle method called when the fragment is no longer visible to the user.
-     * Releases resources but may keep the player active for background playback.
+     * Releases resources
      */
     @Override
     public void onStop() {
         super.onStop();
-        boolean isAppBackground = false;
-        if (isBackgroundModeEnabled)
-            isAppBackground = isApplicationSentToBackground(fragmentContext);
+
         if (isPictureInPicture) {
             controlsContainer.setVisibility(View.VISIBLE);
             playerExit();
@@ -682,36 +588,25 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     /**
      * Lifecycle method called when the fragment is being paused.
-     * Handles player state preservation and PIP mode transitions.
+     * Handles player state preservation
      */
     @Override
     public void onPause() {
         super.onPause();
         if (isChromecastEnabled) castContext.removeCastStateListener(castStateListener);
 
-        boolean isAppBackground = false;
-        if (isBackgroundModeEnabled) {
-            isAppBackground = isApplicationSentToBackground(fragmentContext);
-        }
 
         if (!isPictureInPicture) {
             if (Util.SDK_INT < 24) {
                 if (player != null) player.setPlayWhenReady(false);
                 releasePlayer();
             } else {
-                if (isAppBackground) {
-                    if (player != null) {
-                        if (player.isPlaying()) play();
-                    }
-                } else {
-                    pause();
-                }
+                pause();
             }
         } else {
             if (controlsContainer.getVisibility() == View.VISIBLE) {
                 controlsContainer.setVisibility(View.INVISIBLE);
             }
-            if ((isPictureInPicture || isAppBackground) && player != null) play();
         }
     }
 
@@ -865,23 +760,23 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 Uri subtitleUri = subtitleUris.get(i);
                 String subtitleName = null;
                 String subtitleLang = null;
-                
+
                 // Retrieve subtitle name and language if available
                 if (subtitles != null && i < subtitles.size()) {
                     SubtitleItem item = subtitles.get(i);
                     subtitleName = item.name;
                     subtitleLang = item.lang;
                 }
-                
+
                 // Use the enhanced version of buildSubtitle with the language parameter
                 MediaItem.SubtitleConfiguration subtitle = SubtitleUtils.buildSubtitle(
-                    fragmentContext, 
-                    subtitleUri, 
-                    subtitleName,
-                    subtitleLang,
-                    true
+                        fragmentContext,
+                        subtitleUri,
+                        subtitleName,
+                        subtitleLang,
+                        true
                 );
-                
+
                 subtitleConfigurations.add(subtitle);
             }
             mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations);
@@ -1002,7 +897,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
          * Handles play/pause state changes and sends appropriate notifications.
          *
          * @param playWhenReady Whether playback should proceed when ready
-         * @param reason The reason for the change
+         * @param reason        The reason for the change
          */
         @Override
         public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
@@ -1021,9 +916,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
                 resizeButton.setVisibility(View.VISIBLE);
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isPipEnabled) {
-                    pipButton.setVisibility(View.VISIBLE);
-                }
             } else {
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPause ");
                 NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
@@ -1096,63 +988,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
 
     /**
-     * Builds an HTTP media source for streaming content.
-     * Configures HTTP headers and data source factory for network requests.
-     *
-     * @return The configured media source
-     */
-    private MediaSource buildHttpMediaSource() {
-        MediaSource mediaSource = null;
-
-        DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
-                .setUserAgent("jeep-media3-plugin")
-                .setConnectTimeoutMs(DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS)
-                .setReadTimeoutMs(1800000)
-                .setAllowCrossProtocolRedirects(true);
-
-        // If requestHeaders is not null and has data we pass them to the HttpDataSourceFactory
-        if (requestHeaders != null && requestHeaders.length() > 0) {
-            // We map the requestHeaders(JSObject) to a Map<String, String>
-            Map<String, String> headersMap = new HashMap<String, String>();
-            for (int i = 0; i < requestHeaders.names().length(); i++) {
-                try {
-                    headersMap.put(requestHeaders.names().getString(i), requestHeaders.get(requestHeaders.names().getString(i)).toString());
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-            httpDataSourceFactory.setDefaultRequestProperties(headersMap);
-        }
-
-        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(fragmentContext, httpDataSourceFactory);
-
-        if (
-                videoType.equals("mp4") ||
-                        videoType.equals("webm") ||
-                        videoType.equals("ogv") ||
-                        videoType.equals("3gp") ||
-                        videoType.equals("flv") ||
-                        videoType.equals("")
-        ) {
-            mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
-        } else if (videoType.equals("dash") || videoType.equals("mpd")) {
-            /* adaptive streaming Dash stream */
-            mediaSource = new DashMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
-        } else if (videoType.equals("m3u8")) {
-            mediaSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
-        } else if (videoType.equals("ism")) {
-            /* adaptive streaming SmoothStreaming stream */
-            //  mediaSource = new SmoothStreamingMediaSource.Factory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
-        }
-
-        // Get the subtitles if any
-        if (subtitleUris.size() > 0) {
-            //   mediaSource = this.subtitleManager.getSubTitleFromUri(mediaSource, subtitleUri, dataSourceFactory);
-        }
-        return mediaSource;
-    }
-
-    /**
      * Save instance state
      */
     @Override
@@ -1181,7 +1016,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Fast-forwards the video by a specified amount.
      *
      * @param position The current position in milliseconds
-     * @param times Multiplier for the seek step
+     * @param times    Multiplier for the seek step
      */
     private void fastForward(long position, int times) {
         if (position < totalDuration - seekStep) {
@@ -1197,7 +1032,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Rewinds the video by a specified amount.
      *
      * @param position The current position in milliseconds
-     * @param times Multiplier for the seek step
+     * @param times    Multiplier for the seek step
      */
     private void rewind(long position, int times) {
         if (position > seekStep) {
@@ -1411,32 +1246,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
         currentMediaItemIndex = 0;
         playbackPosition = 0;
         videoUri = null;
+        subtitles.clear();
         subtitleUris.clear();
         isMuted = false;
         currentVolume = (float) 0.5;
-        lastKnownPosition = 0;
     }
 
-    /**
-     * Checks if the application has been sent to the background.
-     * Used to determine appropriate player behavior in background mode.
-     *
-     * @param context The Android context
-     * @return True if app is in background, false otherwise
-     */
-    public boolean isApplicationSentToBackground(final Context context) {
-        int pid = android.os.Process.myPid();
-        ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-        List<ActivityManager.RunningAppProcessInfo> procInfos = am.getRunningAppProcesses();
-        if (procInfos != null) {
-            for (ActivityManager.RunningAppProcessInfo appProcess : procInfos) {
-                if (appProcess.pid == pid) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
+
 
     /**
      * Initializes the Chromecast service.
@@ -1493,7 +1309,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                             }
                             mediaItem =
                                     new MediaItem.Builder()
-                                            .setUri(videoPath)
+                                            .setUri(videoUrl)
                                             .setMimeType(MimeTypes.VIDEO_UNKNOWN)
                                             .setMediaMetadata(movieMetadata)
                                             .build();
@@ -1504,9 +1320,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                         public void onCastSessionAvailable() {
                                             isCasting = true;
                                             final Long videoPosition = player.getCurrentPosition();
-                                            if (isPipEnabled) {
-                                                pipButton.setVisibility(View.GONE);
-                                            }
+
                                             resizeButton.setVisibility(View.GONE);
                                             player.setPlayWhenReady(false);
                                             castImage.setVisibility(View.VISIBLE);
@@ -1522,9 +1336,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                         public void onCastSessionUnavailable() {
                                             isCasting = false;
                                             final Long videoPosition = castPlayer.getCurrentPosition();
-                                            if (isPipEnabled) {
-                                                pipButton.setVisibility(View.VISIBLE);
-                                            }
+
                                             resizeButton.setVisibility(View.VISIBLE);
                                             castImage.setVisibility(View.GONE);
                                             playerView.setPlayer(player);
@@ -1582,7 +1394,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     /**
      * Selects audio and subtitle tracks based on user preferences.
-     * Applies track selection parameters to the player based on the subtitleTrackId, 
+     * Applies track selection parameters to the player based on the subtitleTrackId,
      * subtitleLocale, audioTrackId, and audioLocale properties.
      */
     private void selectTracks() {

@@ -15,27 +15,27 @@ export interface WakoCapacitorVideoPlayerPlugin {
    * Return if a given playerId is playing
    *
    */
-  isPlaying(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  isPlaying(): Promise<capVideoPlayerResult>;
   /**
    * Play the current video from a given playerId
    *
    */
-  play(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  play(): Promise<capVideoPlayerResult>;
   /**
    * Pause the current video from a given playerId
    *
    */
-  pause(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  pause(): Promise<capVideoPlayerResult>;
   /**
    * Get the duration of the current video from a given playerId
    *
    */
-  getDuration(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  getDuration(): Promise<capVideoPlayerResult>;
   /**
    * Get the current time of the current video from a given playerId
    *
    */
-  getCurrentTime(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  getCurrentTime(): Promise<capVideoPlayerResult>;
   /**
    * Set the current time to seek the current video to from a given playerId
    *
@@ -45,7 +45,7 @@ export interface WakoCapacitorVideoPlayerPlugin {
    * Get the volume of the current video from a given playerId
    *
    */
-  getVolume(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  getVolume(): Promise<capVideoPlayerResult>;
   /**
    * Set the volume of the current video to from a given playerId
    *
@@ -55,7 +55,7 @@ export interface WakoCapacitorVideoPlayerPlugin {
    * Get the muted of the current video from a given playerId
    *
    */
-  getMuted(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  getMuted(): Promise<capVideoPlayerResult>;
   /**
    * Set the muted of the current video to from a given playerId
    *
@@ -70,7 +70,7 @@ export interface WakoCapacitorVideoPlayerPlugin {
    * Get the rate of the current video from a given playerId
    *
    */
-  getRate(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+  getRate(): Promise<capVideoPlayerResult>;
   /**
    * Stop all players playing
    *
@@ -132,12 +132,6 @@ export interface capEchoOptions {
 }
 export interface capVideoPlayerOptions {
   /**
-   * Player mode
-   *  - "fullscreen"
-   *  - "embedded" (Web only)
-   */
-  mode?: string;
-  /**
    * The url of the video to play
    */
   url?: string;
@@ -156,15 +150,11 @@ export interface capVideoPlayerOptions {
   /**
    * The default audio language to select, if not found will select the subtitle with the same language if available
    */
-  preferredLanguage?: string;
+  preferredLocale?: string;
   /**
    * SubTitle Options
    */
   subtitleOptions?: SubTitleOptions;
-  /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
   /**
    * Initial playing rate
    */
@@ -179,16 +169,7 @@ export interface capVideoPlayerOptions {
    * default: false
    */
   loopOnEnd?: boolean;
-  /**
-   * Picture in Picture Enable (iOS, Android)
-   * default: true
-   */
-  pipEnabled?: boolean;
-  /**
-   * Background Mode Enable (iOS, Android)
-   * default: true
-   */
-  bkmodeEnabled?: boolean;
+
   /**
    * Show Controls Enable (iOS, Android)
    * default: true
@@ -203,21 +184,7 @@ export interface capVideoPlayerOptions {
    * Component Tag or DOM Element Tag (React app)
    */
   componentTag?: string;
-  /**
-   * Player Width (mode "embedded" only)
-   */
-  width?: number;
-  /**
-   * Player height (mode "embedded" only)
-   */
-  height?: number;
-  /**
-   * Headers for the request (iOS, Android)
-   * by Manuel García Marín (https://github.com/PhantomPainX)
-   */
-  headers?: {
-    [key: string]: string;
-  };
+
   /**
    * Title shown in the player (Android)
    * by Manuel García Marín (https://github.com/PhantomPainX)
@@ -272,17 +239,8 @@ export interface capVideoPlayerOptions {
    */
   startAtSec?: number;
 }
-export interface capVideoPlayerIdOptions {
-  /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
-}
+
 export interface capVideoRateOptions {
-  /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
   /**
    * Rate value
    */
@@ -290,19 +248,11 @@ export interface capVideoRateOptions {
 }
 export interface capVideoVolumeOptions {
   /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
-  /**
    * Volume value between [0 - 1]
    */
   volume?: number;
 }
 export interface capVideoTimeOptions {
-  /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
   /**
    * Video time value you want to seek to
    */
@@ -331,10 +281,6 @@ export interface capVideoSubtitlesOptions {
 }
 
 export interface capVideoListener {
-  /**
-   * Id of DIV Element parent of the player
-   */
-  playerId?: string;
   /**
    * Video current time when listener trigerred
    */

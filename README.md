@@ -15,18 +15,18 @@ npx cap sync
 
 * [`echo(...)`](#echo)
 * [`initPlayer(...)`](#initplayer)
-* [`isPlaying(...)`](#isplaying)
-* [`play(...)`](#play)
-* [`pause(...)`](#pause)
-* [`getDuration(...)`](#getduration)
-* [`getCurrentTime(...)`](#getcurrenttime)
+* [`isPlaying()`](#isplaying)
+* [`play()`](#play)
+* [`pause()`](#pause)
+* [`getDuration()`](#getduration)
+* [`getCurrentTime()`](#getcurrenttime)
 * [`setCurrentTime(...)`](#setcurrenttime)
-* [`getVolume(...)`](#getvolume)
+* [`getVolume()`](#getvolume)
 * [`setVolume(...)`](#setvolume)
-* [`getMuted(...)`](#getmuted)
+* [`getMuted()`](#getmuted)
 * [`setMuted(...)`](#setmuted)
 * [`setRate(...)`](#setrate)
-* [`getRate(...)`](#getrate)
+* [`getRate()`](#getrate)
 * [`stopAllPlayers()`](#stopallplayers)
 * [`showController()`](#showcontroller)
 * [`isControllerIsFullyVisible()`](#iscontrollerisfullyvisible)
@@ -80,85 +80,65 @@ Initialize a video player
 --------------------
 
 
-### isPlaying(...)
+### isPlaying()
 
 ```typescript
-isPlaying(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+isPlaying() => Promise<capVideoPlayerResult>
 ```
 
 Return if a given playerId is playing
 
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
-
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
 --------------------
 
 
-### play(...)
+### play()
 
 ```typescript
-play(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+play() => Promise<capVideoPlayerResult>
 ```
 
 Play the current video from a given playerId
 
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
-
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
 --------------------
 
 
-### pause(...)
+### pause()
 
 ```typescript
-pause(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+pause() => Promise<capVideoPlayerResult>
 ```
 
 Pause the current video from a given playerId
 
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
-
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
 --------------------
 
 
-### getDuration(...)
+### getDuration()
 
 ```typescript
-getDuration(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+getDuration() => Promise<capVideoPlayerResult>
 ```
 
 Get the duration of the current video from a given playerId
 
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
-
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
 --------------------
 
 
-### getCurrentTime(...)
+### getCurrentTime()
 
 ```typescript
-getCurrentTime(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+getCurrentTime() => Promise<capVideoPlayerResult>
 ```
 
 Get the current time of the current video from a given playerId
-
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
 
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
@@ -182,17 +162,13 @@ Set the current time to seek the current video to from a given playerId
 --------------------
 
 
-### getVolume(...)
+### getVolume()
 
 ```typescript
-getVolume(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+getVolume() => Promise<capVideoPlayerResult>
 ```
 
 Get the volume of the current video from a given playerId
-
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
 
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
@@ -216,17 +192,13 @@ Set the volume of the current video to from a given playerId
 --------------------
 
 
-### getMuted(...)
+### getMuted()
 
 ```typescript
-getMuted(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+getMuted() => Promise<capVideoPlayerResult>
 ```
 
 Get the muted of the current video from a given playerId
-
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
 
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
@@ -267,17 +239,13 @@ Set the rate of the current video from a given playerId
 --------------------
 
 
-### getRate(...)
+### getRate()
 
 ```typescript
-getRate(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+getRate() => Promise<capVideoPlayerResult>
 ```
 
 Get the rate of the current video from a given playerId
-
-| Param         | Type                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
 
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
 
@@ -475,35 +443,28 @@ addListener(eventName: 'playerTracksChanged', listenerFunc: PlayerTracksChanged)
 
 #### capVideoPlayerOptions
 
-| Prop                    | Type                                                          | Description                                                                                                                                                                                                                           |
-| ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`mode`**              | <code>string</code>                                           | Player mode - "fullscreen" - "embedded" (Web only)                                                                                                                                                                                    |
-| **`url`**               | <code>string</code>                                           | The url of the video to play                                                                                                                                                                                                          |
-| **`subtitles`**         | <code>{ url: string; name?: string; lang?: string; }[]</code> | The subtitle(s) associated with the video as an array of objects Each object must contain: - url: the url of the subtitle file (required) - name: the name of the subtitle (optional) - lang: the language of the subtitle (optional) |
-| **`preferredLanguage`** | <code>string</code>                                           | The default audio language to select, if not found will select the subtitle with the same language if available                                                                                                                       |
-| **`subtitleOptions`**   | <code><a href="#subtitleoptions">SubTitleOptions</a></code>   | SubTitle Options                                                                                                                                                                                                                      |
-| **`playerId`**          | <code>string</code>                                           | Id of DIV Element parent of the player                                                                                                                                                                                                |
-| **`rate`**              | <code>number</code>                                           | Initial playing rate                                                                                                                                                                                                                  |
-| **`exitOnEnd`**         | <code>boolean</code>                                          | Exit on VideoEnd (iOS, Android) default: true                                                                                                                                                                                         |
-| **`loopOnEnd`**         | <code>boolean</code>                                          | Loop on VideoEnd when exitOnEnd false (iOS, Android) default: false                                                                                                                                                                   |
-| **`pipEnabled`**        | <code>boolean</code>                                          | Picture in Picture Enable (iOS, Android) default: true                                                                                                                                                                                |
-| **`bkmodeEnabled`**     | <code>boolean</code>                                          | Background Mode Enable (iOS, Android) default: true                                                                                                                                                                                   |
-| **`showControls`**      | <code>boolean</code>                                          | Show Controls Enable (iOS, Android) default: true                                                                                                                                                                                     |
-| **`displayMode`**       | <code>string</code>                                           | Display Mode ["all", "portrait", "landscape"] (iOS, Android) default: "all"                                                                                                                                                           |
-| **`componentTag`**      | <code>string</code>                                           | Component Tag or DOM Element Tag (React app)                                                                                                                                                                                          |
-| **`width`**             | <code>number</code>                                           | Player Width (mode "embedded" only)                                                                                                                                                                                                   |
-| **`height`**            | <code>number</code>                                           | Player height (mode "embedded" only)                                                                                                                                                                                                  |
-| **`headers`**           | <code>{ [key: string]: string; }</code>                       | Headers for the request (iOS, Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                       |
-| **`title`**             | <code>string</code>                                           | Title shown in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                          |
-| **`smallTitle`**        | <code>string</code>                                           | Subtitle shown below the title in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                       |
-| **`accentColor`**       | <code>string</code>                                           | ExoPlayer Progress Bar and Spinner color (Android) by Manuel García Marín (https://github.com/PhantomPainX) Must be a valid hex color code default: #FFFFFF                                                                           |
-| **`chromecast`**        | <code>boolean</code>                                          | Chromecast enable/disable (Android) by Manuel García Marín (https://github.com/PhantomPainX) default: true                                                                                                                            |
-| **`artwork`**           | <code>string</code>                                           | Artwork url to be shown in Chromecast player by Manuel García Marín (https://github.com/PhantomPainX) default: ""                                                                                                                     |
-| **`subtitleTrackId`**   | <code>string</code>                                           | ID of the subtitle track to select                                                                                                                                                                                                    |
-| **`subtitleLocale`**    | <code>string</code>                                           | Locale of the subtitle track to select (if subtitleTrackId not found)                                                                                                                                                                 |
-| **`audioTrackId`**      | <code>string</code>                                           | ID of the audio track to select                                                                                                                                                                                                       |
-| **`audioLocale`**       | <code>string</code>                                           | Locale of the audio track to select (if audioTrackId not found)                                                                                                                                                                       |
-| **`startAtSec`**        | <code>number</code>                                           | Start time of the video                                                                                                                                                                                                               |
+| Prop                  | Type                                                          | Description                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`url`**             | <code>string</code>                                           | The url of the video to play                                                                                                                                                                                                          |
+| **`subtitles`**       | <code>{ url: string; name?: string; lang?: string; }[]</code> | The subtitle(s) associated with the video as an array of objects Each object must contain: - url: the url of the subtitle file (required) - name: the name of the subtitle (optional) - lang: the language of the subtitle (optional) |
+| **`preferredLocale`** | <code>string</code>                                           | The default audio language to select, if not found will select the subtitle with the same language if available                                                                                                                       |
+| **`subtitleOptions`** | <code><a href="#subtitleoptions">SubTitleOptions</a></code>   | SubTitle Options                                                                                                                                                                                                                      |
+| **`rate`**            | <code>number</code>                                           | Initial playing rate                                                                                                                                                                                                                  |
+| **`exitOnEnd`**       | <code>boolean</code>                                          | Exit on VideoEnd (iOS, Android) default: true                                                                                                                                                                                         |
+| **`loopOnEnd`**       | <code>boolean</code>                                          | Loop on VideoEnd when exitOnEnd false (iOS, Android) default: false                                                                                                                                                                   |
+| **`showControls`**    | <code>boolean</code>                                          | Show Controls Enable (iOS, Android) default: true                                                                                                                                                                                     |
+| **`displayMode`**     | <code>string</code>                                           | Display Mode ["all", "portrait", "landscape"] (iOS, Android) default: "all"                                                                                                                                                           |
+| **`componentTag`**    | <code>string</code>                                           | Component Tag or DOM Element Tag (React app)                                                                                                                                                                                          |
+| **`title`**           | <code>string</code>                                           | Title shown in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                          |
+| **`smallTitle`**      | <code>string</code>                                           | Subtitle shown below the title in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                       |
+| **`accentColor`**     | <code>string</code>                                           | ExoPlayer Progress Bar and Spinner color (Android) by Manuel García Marín (https://github.com/PhantomPainX) Must be a valid hex color code default: #FFFFFF                                                                           |
+| **`chromecast`**      | <code>boolean</code>                                          | Chromecast enable/disable (Android) by Manuel García Marín (https://github.com/PhantomPainX) default: true                                                                                                                            |
+| **`artwork`**         | <code>string</code>                                           | Artwork url to be shown in Chromecast player by Manuel García Marín (https://github.com/PhantomPainX) default: ""                                                                                                                     |
+| **`subtitleTrackId`** | <code>string</code>                                           | ID of the subtitle track to select                                                                                                                                                                                                    |
+| **`subtitleLocale`**  | <code>string</code>                                           | Locale of the subtitle track to select (if subtitleTrackId not found)                                                                                                                                                                 |
+| **`audioTrackId`**    | <code>string</code>                                           | ID of the audio track to select                                                                                                                                                                                                       |
+| **`audioLocale`**     | <code>string</code>                                           | Locale of the audio track to select (if audioTrackId not found)                                                                                                                                                                       |
+| **`startAtSec`**      | <code>number</code>                                           | Start time of the video                                                                                                                                                                                                               |
 
 
 #### SubTitleOptions
@@ -515,27 +476,18 @@ addListener(eventName: 'playerTracksChanged', listenerFunc: PlayerTracksChanged)
 | **`fontSize`**        | <code>number</code> | Font Size in pixels (default 16)                      |
 
 
-#### capVideoPlayerIdOptions
-
-| Prop           | Type                | Description                            |
-| -------------- | ------------------- | -------------------------------------- |
-| **`playerId`** | <code>string</code> | Id of DIV Element parent of the player |
-
-
 #### capVideoTimeOptions
 
-| Prop           | Type                | Description                            |
-| -------------- | ------------------- | -------------------------------------- |
-| **`playerId`** | <code>string</code> | Id of DIV Element parent of the player |
-| **`seektime`** | <code>number</code> | Video time value you want to seek to   |
+| Prop           | Type                | Description                          |
+| -------------- | ------------------- | ------------------------------------ |
+| **`seektime`** | <code>number</code> | Video time value you want to seek to |
 
 
 #### capVideoVolumeOptions
 
-| Prop           | Type                | Description                            |
-| -------------- | ------------------- | -------------------------------------- |
-| **`playerId`** | <code>string</code> | Id of DIV Element parent of the player |
-| **`volume`**   | <code>number</code> | Volume value between [0 - 1]           |
+| Prop         | Type                | Description                  |
+| ------------ | ------------------- | ---------------------------- |
+| **`volume`** | <code>number</code> | Volume value between [0 - 1] |
 
 
 #### capVideoMutedOptions
@@ -548,10 +500,9 @@ addListener(eventName: 'playerTracksChanged', listenerFunc: PlayerTracksChanged)
 
 #### capVideoRateOptions
 
-| Prop           | Type                | Description                            |
-| -------------- | ------------------- | -------------------------------------- |
-| **`playerId`** | <code>string</code> | Id of DIV Element parent of the player |
-| **`rate`**     | <code>number</code> | Rate value                             |
+| Prop       | Type                | Description |
+| ---------- | ------------------- | ----------- |
+| **`rate`** | <code>number</code> | Rate value  |
 
 
 #### capVideoSubtitlesOptions
@@ -573,7 +524,6 @@ addListener(eventName: 'playerTracksChanged', listenerFunc: PlayerTracksChanged)
 
 | Prop              | Type                | Description                                |
 | ----------------- | ------------------- | ------------------------------------------ |
-| **`playerId`**    | <code>string</code> | Id of DIV Element parent of the player     |
 | **`currentTime`** | <code>number</code> | Video current time when listener trigerred |
 
 
