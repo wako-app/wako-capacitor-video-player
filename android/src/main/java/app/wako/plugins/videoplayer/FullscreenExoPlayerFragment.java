@@ -37,6 +37,7 @@ import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.media3.cast.CastPlayer;
 import androidx.media3.cast.SessionAvailabilityListener;
+import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
@@ -45,16 +46,27 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackGroup;
+import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.RenderersFactory;
+import androidx.media3.exoplayer.SeekParameters;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
@@ -78,6 +90,8 @@ import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
+
+import org.json.JSONException;
 
 import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Components.SubtitleManager;
@@ -128,27 +142,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public long startAtSec;
 
     private static final String TAG = FullscreenExoPlayerFragment.class.getName();
+    private static final String DISABLED_TRACK = "#disabled";
+
     public static final long UNKNOWN_TIME = -1L;
-    private final List<String> supportedVideoFormats = Arrays.asList(
-            "mp4",
-            "webm",
-            "ogv",
-            "3gp",
-            "flv",
-            "dash",
-            "mpd",
-            "m3u8",
-            "ism",
-            "ytube",
-            ""
-    );
+    private final List<String> supportedVideoFormats = Arrays.asList("mp4", "webm", "ogv", "3gp", "flv", "dash", "mpd", "m3u8", "ism", "ytube", "");
     private Player.Listener playerListener;
     private PlayerView playerView;
     private String videoType = null;
     private static ExoPlayer player;
-    private boolean isFirstReady = true;
-    private int currentMediaItemIndex = 0;
-    private long playbackPosition = 0;
+
     private Uri videoUri = null;
     private ProgressBar progressBar;
     private View fragmentView;
@@ -166,9 +168,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private float currentVolume = (float) 0.5;
     private DefaultTrackSelector trackSelector;
 
-    // Current playback position (in milliseconds).
-    private int totalDuration;
-    private static final int seekStep = 10000;
     private boolean isCasting = false;
 
     // Tag for the instance state bundle.
@@ -186,9 +185,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private final MediaRouter.Callback mediaRouterCallback = new EmptyCallback();
     private MediaRouteSelector mSelector;
     private CastStateListener castStateListener = null;
-    private Boolean isPlayerReady = false;
-    private SubtitleManager subtitleManager;
 
+    private SubtitleManager subtitleManager;
+    public static boolean controllerVisible;
+    public static boolean controllerVisibleFully;
+
+    private boolean firstReadyCalled = false;
 
     /**
      * Creates and configures the fragment view with all necessary UI components.
@@ -231,14 +233,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         playerView.setShowSubtitleButton(true);
 
-        this.subtitleManager = new SubtitleManager(
-                fragmentContext,
-                fragmentView,
-                subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "",
-                subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "",
-                subTitleOptions.has("fontSize") ? subTitleOptions.getInteger("fontSize") : 16,
-                preferredLocale
-        );
+
+        if (isTvDevice) {
+            isChromecastEnabled = false;
+            displayMode = "landscape";
+            resizeButton.setVisibility(View.GONE);
+        }
+
+        this.subtitleManager = new SubtitleManager(fragmentContext, fragmentView, subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "", subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "", subTitleOptions.has("fontSize") ? subTitleOptions.getInteger("fontSize") : 16, preferredLocale);
 
         Activity fragmentActivity = getActivity();
         if (displayMode.equals("landscape")) {
@@ -251,6 +253,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
 
         playerView.setUseController(true);
+
 
         Log.v(TAG, "isChromecastEnabled: " + isChromecastEnabled);
         if (!isChromecastEnabled) {
@@ -278,14 +281,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
         controlsContainer.setVisibility(View.INVISIBLE);
 
         playerView.setControllerShowTimeoutMs(3000);
-        playerView.setControllerVisibilityListener(
-                new PlayerView.ControllerVisibilityListener() {
-                    @Override
-                    public void onVisibilityChanged(int visibility) {
-                        controlsContainer.setVisibility(visibility);
-                    }
-                }
-        );
+        playerView.setControllerVisibilityListener(new PlayerView.ControllerVisibilityListener() {
+            @Override
+            public void onVisibilityChanged(int visibility) {
+                controlsContainer.setVisibility(visibility);
+
+                controllerVisible = visibility == View.VISIBLE;
+                controllerVisibleFully = playerView.isControllerFullyVisible();
+            }
+        });
 
 
         Log.v(TAG, "display url: " + videoUrl);
@@ -318,73 +322,43 @@ public class FullscreenExoPlayerFragment extends Fragment {
         getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // Configure key handling on PlayerView directly
+        playerView.setOnKeyListener(new View.OnKeyListener() {
+            @Override
+            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                Log.d(TAG, "PlayerView onKey event received: keyCode=" + keyCode + ", action=" + event.getAction());
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    boolean handled = onKeyDown(keyCode, event);
+                    Log.d(TAG, "PlayerView onKeyDown handled: " + handled);
+                    return handled;
+                }
+                return false;
+            }
+        });
 
-        getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                // Set the onKey playerListener
-                                fragmentView.setFocusableInTouchMode(true);
-                                fragmentView.requestFocus();
-                                fragmentView.setOnKeyListener(
-                                        new View.OnKeyListener() {
-                                            @Override
-                                            public boolean onKey(View v, int keyCode, KeyEvent event) {
-                                                if (event.getAction() == KeyEvent.ACTION_UP) {
-                                                    long videoPosition = player.getCurrentPosition();
-                                                    Log.v(TAG, "$$$$ onKey " + keyCode + " $$$$");
-                                                    if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_HOME) {
-                                                        Log.v(TAG, "$$$$ Going to backpress $$$$");
-                                                        backPressed();
-                                                    } else if (isTvDevice) {
-                                                        switch (keyCode) {
-                                                            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                                                                fastForward(videoPosition, 1);
-                                                                break;
-                                                            case KeyEvent.KEYCODE_DPAD_LEFT:
-                                                                rewind(videoPosition, 1);
-                                                                break;
-                                                            case KeyEvent.KEYCODE_DPAD_CENTER:
-                                                                play_pause();
-                                                                break;
-                                                            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                                                                fastForward(videoPosition, 2);
-                                                                break;
-                                                            case KeyEvent.KEYCODE_MEDIA_REWIND:
-                                                                rewind(videoPosition, 2);
-                                                                break;
-                                                        }
-                                                    }
-                                                    return true;
-                                                } else {
-                                                    return false;
-                                                }
-                                            }
-                                        }
-                                );
+        // Make PlayerView focusable and give it initial focus
+        playerView.setFocusable(true);
+        playerView.setFocusableInTouchMode(true);
+        playerView.requestFocus();
 
+        getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                closeButton.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        playerExit();
+                    }
+                });
 
-                                closeButton.setOnClickListener(
-                                        new View.OnClickListener() {
-                                            @Override
-                                            public void onClick(View view) {
-                                                playerExit();
-                                            }
-                                        }
-                                );
-
-                                resizeButton.setOnClickListener(
-                                        new View.OnClickListener() {
-                                            @Override
-                                            public void onClick(View view) {
-                                                resizePressed();
-                                            }
-                                        }
-                                );
-                            }
-                        }
-                );
+                resizeButton.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        resizePressed();
+                    }
+                });
+            }
+        });
 
         return fragmentView;
     }
@@ -446,6 +420,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public boolean isControllerIsFullyVisible() {
         return playerView.isControllerFullyVisible();
     }
+
 
     /**
      * Handles the back button press event.
@@ -524,10 +499,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 if (player == null) {
                     initializePlayer();
                 }
-                if (player.getCurrentPosition() != 0) {
-                    isFirstReady = false;
-                    play();
-                }
+
             } else {
                 getActivity().finishAndRemoveTask();
             }
@@ -570,8 +542,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     public void releasePlayer() {
         if (player != null) {
-            playbackPosition = player.getCurrentPosition();
-            currentMediaItemIndex = player.getCurrentMediaItemIndex();
             player.release();
             player = null;
             trackSelector = null;
@@ -585,9 +555,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
             videoType = null;
             playerView = null;
-            isFirstReady = true;
-            currentMediaItemIndex = 0;
-            playbackPosition = 0;
             videoUri = null;
             subtitles.clear();
             isMuted = false;
@@ -607,6 +574,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
         if ((Util.SDK_INT < 24 || player == null)) {
             initializePlayer();
         }
+
+        // Ensure PlayerView has focus
+        if (playerView != null) {
+            playerView.post(new Runnable() {
+                @Override
+                public void run() {
+                    playerView.requestFocus();
+                }
+            });
+        }
     }
 
     /**
@@ -616,12 +593,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
     @SuppressLint("InlinedApi")
     private void hideSystemUi() {
         if (playerView != null) playerView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LOW_PROFILE |
-                        View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            View.SYSTEM_UI_FLAG_LOW_PROFILE |
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         );
     }
 
@@ -644,29 +621,34 @@ public class FullscreenExoPlayerFragment extends Fragment {
         if (player != null) {
             releasePlayer();
         }
+
+        // Save the requested initial position
+        long initialPosition = startAtSec > 0 ? startAtSec * 1000 : 0;
+        Log.d(TAG, "Requested initial position: " + initialPosition + "ms (startAtSec=" + startAtSec + ")");
+
         // Enable audio libs
-        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
-                .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
-                .setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE);
+        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory().setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS).setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE);
 
-        @SuppressLint("WrongConstant")
-        RenderersFactory renderersFactory = new DefaultRenderersFactory(fragmentContext)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+        @SuppressLint("WrongConstant") RenderersFactory renderersFactory = new DefaultRenderersFactory(fragmentContext).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
 
+        DefaultBandwidthMeter bandwidthMeter = new DefaultBandwidthMeter.Builder(fragmentContext).build();
+        AdaptiveTrackSelection.Factory videoTrackSelectionFactory = new AdaptiveTrackSelection.Factory();
 
-        trackSelector = new DefaultTrackSelector(fragmentContext);
+        trackSelector = new DefaultTrackSelector(fragmentContext, videoTrackSelectionFactory);
 
+        trackSelector.setParameters(
+                trackSelector.buildUponParameters()
+                        .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED)
+        );
 
         playerListener = new PlayerListener();
 
-        player =
-                new ExoPlayer.Builder(fragmentContext, renderersFactory)
-                        .setSeekBackIncrementMs(10000)
-                        .setSeekForwardIncrementMs(10000)
-                        .setTrackSelector(trackSelector)
-                        .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory))
-                        .build();
+        LoadControl loadControl = new DefaultLoadControl();
 
+        player = new ExoPlayer.Builder(fragmentContext, renderersFactory).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).setTrackSelector(trackSelector)
+                .setLoadControl(loadControl)
+                .setBandwidthMeter(bandwidthMeter)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory)).build();
 
         mediaSession = new MediaSession.Builder(fragmentContext, player).build();
 
@@ -674,9 +656,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         playerView.setPlayer(player);
 
-        MediaItem.Builder mediaItemBuilder = new MediaItem.Builder()
-                .setUri(videoUri)
-                .setMimeType(videoType);
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build();
+        player.setAudioAttributes(audioAttributes, true);
+
+
+        MediaItem.Builder mediaItemBuilder = new MediaItem.Builder().setUri(videoUri).setMimeType(videoType);
 
 
         this.subtitleManager.setTrackSelector(trackSelector);
@@ -689,25 +676,25 @@ public class FullscreenExoPlayerFragment extends Fragment {
             player.setRepeatMode(Player.REPEAT_MODE_OFF);
         }
 
-
         MediaItem mediaItem = mediaItemBuilder.build();
 
-
-        player.setMediaItem(mediaItem, startAtSec > 0 ? startAtSec * 1000 : 0);
+        // Use the saved initial position
+        player.setMediaItem(mediaItem, initialPosition);
 
         player.prepare();
+
+        player.setPlayWhenReady(true);
 
         ImmutableList<Tracks.Group> trackGroups = player.getCurrentTracks().getGroups();
         for (int i = 0; i < trackGroups.size(); i++) {
             Tracks.Group group = trackGroups.get(i);
             if (group.getType() == C.TRACK_TYPE_TEXT) {
-                Log.d(TAG, "Sous-titres: ${group.mediaTrackGroup.getFormat(0).language}, sélectionné: ${group.isSelected}");
+                Log.d(TAG, "Subtitles: ${group.mediaTrackGroup.getFormat(0).language}, selected: ${group.isSelected}");
             }
         }
 
         playerView.showController();
 
-        player.setPlayWhenReady(true);
 
         this.subtitleManager.updateCustomSubtitleButton();
 
@@ -715,6 +702,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         NotificationCenter.defaultCenter().postNotification("initializePlayer", null);
     }
+
 
     /**
      * Inner class that listens to player events and handles appropriate responses.
@@ -730,8 +718,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         @Override
         public void onPlaybackStateChanged(int state) {
             String stateString;
-            final long currentTime = player != null ?
-                    (player.isCurrentMediaItemLive() ? 0 : player.getCurrentPosition() / 1000) : 0;
+            final long currentTime = player != null ? (player.isCurrentMediaItemLive() ? 0 : player.getCurrentPosition() / 1000) : 0;
 
             Map<String, Object> info = new HashMap<String, Object>() {
                 {
@@ -752,34 +739,29 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 case ExoPlayer.STATE_READY:
                     stateString = "ExoPlayer.STATE_READY     -";
                     progressBar.setVisibility(View.GONE);
-                    isPlayerReady = true;
                     playerView.setUseController(showControls);
                     controlsContainer.setVisibility(View.INVISIBLE);
-                    Log.v(TAG, "**** in ExoPlayer.STATE_READY isFirstReady " + isFirstReady);
+
+                    if (!firstReadyCalled) {
+                        firstReadyCalled = true;
+                        NotificationCenter.defaultCenter().postNotification("playerStateReady", info);
+
+                        //  selectTracks();
+                        selectTracksOld();
+                    }
 
                     subtitleManager.updateCustomSubtitleButton();
 
-                    if (isFirstReady) {
-                        isFirstReady = false;
-                        NotificationCenter.defaultCenter().postNotification("playerItemReady", info);
-
-                        play();
-                        Log.v(TAG, "**** in ExoPlayer.STATE_READY isFirstReady player.isPlaying" + player.isPlaying());
-                        player.seekTo(currentMediaItemIndex, playbackPosition);
-
-                        //   selectTracks();
-
-                        // We show progress bar, position and duration only when the video is not live
-                        if (!player.isCurrentMediaItemLive()) {
-                            videoProgressBar.setVisibility(View.VISIBLE);
-                            currentTimeView.setVisibility(View.VISIBLE);
-                            totalTimeView.setVisibility(View.VISIBLE);
-                            timeSeparatorView.setVisibility(View.VISIBLE);
-                            playerView.setShowFastForwardButton(true);
-                            playerView.setShowRewindButton(true);
-                        } else {
-                            liveText.setVisibility(View.VISIBLE);
-                        }
+                    // We show progress bar, position and duration only when the video is not live
+                    if (!player.isCurrentMediaItemLive()) {
+                        videoProgressBar.setVisibility(View.VISIBLE);
+                        currentTimeView.setVisibility(View.VISIBLE);
+                        totalTimeView.setVisibility(View.VISIBLE);
+                        timeSeparatorView.setVisibility(View.VISIBLE);
+                        playerView.setShowFastForwardButton(true);
+                        playerView.setShowRewindButton(true);
+                    } else {
+                        liveText.setVisibility(View.VISIBLE);
                     }
                     break;
                 case ExoPlayer.STATE_ENDED:
@@ -791,14 +773,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     player.setPlayWhenReady(false);
                     if (shouldExitOnEnd) {
                         releasePlayer();
-                        NotificationCenter.defaultCenter().postNotification("playerItemEnd", info);
+                        NotificationCenter.defaultCenter().postNotification("playerStateEnd", info);
                     }
                     break;
                 default:
                     stateString = "UNKNOWN_STATE             -";
                     break;
             }
-            Log.v(TAG, stateString + " currentTime: " + currentTime + " - isPlayerReady: " + isPlayerReady);
+            Log.v(TAG, stateString + " currentTime: " + currentTime);
         }
 
         /**
@@ -810,8 +792,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
          */
         @Override
         public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
-            final long currentTime = player != null ?
-                    (player.isCurrentMediaItemLive() ? 0 : player.getCurrentPosition() / 1000) : 0;
+            final long currentTime = player != null ? (player.isCurrentMediaItemLive() ? 0 : player.getCurrentPosition() / 1000) : 0;
 
             Map<String, Object> info = new HashMap<String, Object>() {
                 {
@@ -875,17 +856,20 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 trackInfo.put("audioTrack", audioInfo);
             }
 
+            Map<String, Object> subtitleInfo = new HashMap<String, Object>();
             if (currentSubtitleTrack != null) {
                 Format subtitleFormat = currentSubtitleTrack.getFormat(0);
-                Map<String, Object> subtitleInfo = new HashMap<String, Object>();
                 subtitleInfo.put("id", subtitleFormat.id);
                 subtitleInfo.put("language", subtitleFormat.language);
                 subtitleInfo.put("label", subtitleFormat.label);
                 subtitleInfo.put("codecs", subtitleFormat.codecs);
                 subtitleInfo.put("containerMimeType", subtitleFormat.containerMimeType);
                 subtitleInfo.put("sampleMimeType", subtitleFormat.sampleMimeType);
-                trackInfo.put("subtitleTrack", subtitleInfo);
+
+            } else {
+                subtitleInfo.put("id", DISABLED_TRACK);
             }
+            trackInfo.put("subtitleTrack", subtitleInfo);
 
             NotificationCenter.defaultCenter().postNotification("playerTracksChanged", trackInfo);
 
@@ -908,6 +892,90 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
     }
 
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_BUTTON_SELECT:
+                if (player == null) break;
+                if (keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                    player.pause();
+                } else if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY) {
+                    player.play();
+                } else if (player.isPlaying()) {
+                    player.pause();
+                } else {
+                    player.play();
+                }
+                return true;
+
+            case KeyEvent.KEYCODE_BUTTON_START:
+            case KeyEvent.KEYCODE_BUTTON_A:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_SPACE:
+                if (player == null) break;
+                if (!controllerVisibleFully) {
+                    if (player.isPlaying()) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                    return true;
+                }
+                break;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_BUTTON_L2:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
+                    if (player == null) break;
+                    long pos = player.getCurrentPosition();
+
+                    long seekTo = pos - 10_000;
+                    if (seekTo < 0) seekTo = 0;
+                    player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
+                    player.seekTo(seekTo);
+                    return true;
+                }
+                break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_BUTTON_R2:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+                    if (player == null) break;
+                    long pos = player.getCurrentPosition();
+                    long seekTo = pos + 10_000;
+                    long seekMax = player.getDuration();
+                    if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
+                    player.setSeekParameters(SeekParameters.NEXT_SYNC);
+                    player.seekTo(seekTo);
+                    return true;
+                }
+                break;
+            case KeyEvent.KEYCODE_BACK:
+                if (isTvDevice) {
+                    if (controllerVisible && player != null && player.isPlaying()) {
+                        playerView.hideController();
+                        return true;
+                    } else {
+                        backPressed();
+                    }
+                } else {
+                    backPressed();
+                }
+                break;
+            default:
+                if (!controllerVisibleFully) {
+                    playerView.showController();
+                    return true;
+                }
+                break;
+        }
+        return false;
+    }
+
 
     /**
      * Enables or disables subtitle display.
@@ -916,48 +984,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     public void enableSubtitles(boolean enabled) {
 
-        // TODO
-    }
-
-
-    /**
-     * Fast-forwards the video by a specified amount.
-     *
-     * @param position The current position in milliseconds
-     * @param times    Multiplier for the seek step
-     */
-    private void fastForward(long position, int times) {
-        if (position < totalDuration - seekStep) {
-            if (player.isPlaying()) {
-                player.setPlayWhenReady(false);
-            }
-            player.seekTo(position + (long) times * seekStep);
-            play();
+        if (!enabled) {
+            trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED));
+        } else {
+            trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
         }
     }
 
-    /**
-     * Rewinds the video by a specified amount.
-     *
-     * @param position The current position in milliseconds
-     * @param times    Multiplier for the seek step
-     */
-    private void rewind(long position, int times) {
-        if (position > seekStep) {
-            if (player.isPlaying()) {
-                player.setPlayWhenReady(false);
-            }
-            player.seekTo(position - (long) times * seekStep);
-            play();
-        }
-    }
-
-    /**
-     * Toggles between play and pause states.
-     */
-    private void play_pause() {
-        player.setPlayWhenReady(!player.isPlaying());
-    }
 
     /**
      * Checks if the player is currently playing.
@@ -1012,9 +1045,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     public void setCurrentTime(int timeSecond) {
 
-        long seekPosition = player.getCurrentPosition() == UNKNOWN_TIME
-                ? 0
-                : Math.min(Math.max(0, timeSecond * 1000), player.getDuration());
+        long seekPosition = player.getCurrentPosition() == UNKNOWN_TIME ? 0 : Math.min(Math.max(0, timeSecond * 1000), player.getDuration());
         player.seekTo(seekPosition);
     }
 
@@ -1091,12 +1122,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         if (button == null) return;
         Context castContext = new ContextThemeWrapper(getContext(), androidx.mediarouter.R.style.Theme_MediaRouter);
 
-        TypedArray a = castContext.obtainStyledAttributes(
-                null,
-                androidx.mediarouter.R.styleable.MediaRouteButton,
-                androidx.mediarouter.R.attr.mediaRouteButtonStyle,
-                0
-        );
+        TypedArray a = castContext.obtainStyledAttributes(null, androidx.mediarouter.R.styleable.MediaRouteButton, androidx.mediarouter.R.attr.mediaRouteButtonStyle, 0);
         Drawable drawable = a.getDrawable(androidx.mediarouter.R.styleable.MediaRouteButton_externalRouteEnabledDrawable);
         a.recycle();
         DrawableCompat.setTint(drawable, getContext().getResources().getColor(R.color.white));
@@ -1149,125 +1175,101 @@ public class FullscreenExoPlayerFragment extends Fragment {
         Executor executor = Executors.newSingleThreadExecutor();
         Task<CastContext> task = CastContext.getSharedInstance(fragmentContext, executor);
 
-        task.addOnCompleteListener(
-                new OnCompleteListener<CastContext>() {
-                    @Override
-                    public void onComplete(Task<CastContext> task) {
-                        if (task.isSuccessful()) {
-                            castContext = task.getResult();
-                            castPlayer = new CastPlayer(castContext);
-                            mediaRouter = MediaRouter.getInstance(fragmentContext);
-                            mSelector =
-                                    new MediaRouteSelector.Builder()
-                                            .addControlCategories(
-                                                    Arrays.asList(MediaControlIntent.CATEGORY_LIVE_AUDIO, MediaControlIntent.CATEGORY_LIVE_VIDEO)
-                                            )
-                                            .build();
+        task.addOnCompleteListener(new OnCompleteListener<CastContext>() {
+            @Override
+            public void onComplete(Task<CastContext> task) {
+                if (task.isSuccessful()) {
+                    castContext = task.getResult();
+                    castPlayer = new CastPlayer(castContext);
+                    mediaRouter = MediaRouter.getInstance(fragmentContext);
+                    mSelector = new MediaRouteSelector.Builder().addControlCategories(Arrays.asList(MediaControlIntent.CATEGORY_LIVE_AUDIO, MediaControlIntent.CATEGORY_LIVE_VIDEO)).build();
 
-                            mediaRouteButtonColorWhite(mediaRouteButton);
-                            if (
-                                    castContext != null && castContext.getCastState() != CastState.NO_DEVICES_AVAILABLE
-                            ) mediaRouteButton.setVisibility(View.VISIBLE);
+                    mediaRouteButtonColorWhite(mediaRouteButton);
+                    if (castContext != null && castContext.getCastState() != CastState.NO_DEVICES_AVAILABLE)
+                        mediaRouteButton.setVisibility(View.VISIBLE);
 
-                            castStateListener =
-                                    state -> {
-                                        if (state == CastState.NO_DEVICES_AVAILABLE) {
-                                            mediaRouteButton.setVisibility(View.GONE);
-                                        } else {
-                                            if (mediaRouteButton.getVisibility() == View.GONE) {
-                                                mediaRouteButton.setVisibility(View.VISIBLE);
-                                            }
-                                        }
-                                    };
-                            CastButtonFactory.setUpMediaRouteButton(fragmentContext, mediaRouteButton);
-
-                            MediaMetadata movieMetadata;
-                            if (posterUrl != "") {
-                                movieMetadata =
-                                        new MediaMetadata.Builder()
-                                                .setTitle(videoTitle)
-                                                .setSubtitle(videoSubtitle)
-                                                .setMediaType(MediaMetadata.MEDIA_TYPE_MOVIE)
-                                                .setArtworkUri(Uri.parse(posterUrl))
-                                                .build();
-                                new setCastImage().execute();
-                            } else {
-                                movieMetadata = new MediaMetadata.Builder().setTitle(videoTitle).setSubtitle(videoSubtitle).build();
-                            }
-                            mediaItem =
-                                    new MediaItem.Builder()
-                                            .setUri(videoUrl)
-                                            .setMimeType(MimeTypes.VIDEO_UNKNOWN)
-                                            .setMediaMetadata(movieMetadata)
-                                            .build();
-
-                            castPlayer.setSessionAvailabilityListener(
-                                    new SessionAvailabilityListener() {
-                                        @Override
-                                        public void onCastSessionAvailable() {
-                                            isCasting = true;
-                                            final Long videoPosition = player.getCurrentPosition();
-
-                                            resizeButton.setVisibility(View.GONE);
-                                            player.setPlayWhenReady(false);
-                                            castImage.setVisibility(View.VISIBLE);
-                                            castPlayer.setMediaItem(mediaItem, videoPosition);
-                                            playerView.setPlayer(castPlayer);
-                                            playerView.setControllerShowTimeoutMs(0);
-                                            playerView.setControllerHideOnTouch(false);
-                                            //We perform a click because for some weird reason, the layout is black until the user clicks on it
-                                            playerView.performClick();
-                                        }
-
-                                        @Override
-                                        public void onCastSessionUnavailable() {
-                                            isCasting = false;
-                                            final Long videoPosition = castPlayer.getCurrentPosition();
-
-                                            resizeButton.setVisibility(View.VISIBLE);
-                                            castImage.setVisibility(View.GONE);
-                                            playerView.setPlayer(player);
-                                            player.setPlayWhenReady(true);
-                                            player.seekTo(videoPosition);
-                                            playerView.setControllerShowTimeoutMs(3000);
-                                            playerView.setControllerHideOnTouch(true);
-                                        }
-                                    }
-                            );
-
-                            castPlayer.addListener(
-                                    new Player.Listener() {
-                                        @Override
-                                        public void onPlayerStateChanged(boolean playWhenReady, int state) {
-                                            Map<String, Object> info = new HashMap<String, Object>() {
-                                                {
-                                                    put("currentTime", String.valueOf(player.getCurrentPosition() / 1000));
-                                                }
-                                            };
-                                            switch (state) {
-                                                case CastPlayer.STATE_READY:
-                                                    if (castPlayer.isPlaying()) {
-                                                        NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
-                                                    } else {
-                                                        NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
-                                                    }
-                                                    break;
-                                                default:
-                                                    break;
-                                            }
-                                        }
-                                    }
-                            );
-
-                            castContext.addCastStateListener(castStateListener);
-                            mediaRouter.addCallback(mSelector, mediaRouterCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
+                    castStateListener = state -> {
+                        if (state == CastState.NO_DEVICES_AVAILABLE) {
+                            mediaRouteButton.setVisibility(View.GONE);
                         } else {
-                            Exception e = task.getException();
-                            e.printStackTrace();
+                            if (mediaRouteButton.getVisibility() == View.GONE) {
+                                mediaRouteButton.setVisibility(View.VISIBLE);
+                            }
                         }
+                    };
+                    CastButtonFactory.setUpMediaRouteButton(fragmentContext, mediaRouteButton);
+
+                    MediaMetadata movieMetadata;
+                    if (posterUrl != "") {
+                        movieMetadata = new MediaMetadata.Builder().setTitle(videoTitle).setSubtitle(videoSubtitle).setMediaType(MediaMetadata.MEDIA_TYPE_MOVIE).setArtworkUri(Uri.parse(posterUrl)).build();
+                        new setCastImage().execute();
+                    } else {
+                        movieMetadata = new MediaMetadata.Builder().setTitle(videoTitle).setSubtitle(videoSubtitle).build();
                     }
+                    mediaItem = new MediaItem.Builder().setUri(videoUrl).setMimeType(MimeTypes.VIDEO_UNKNOWN).setMediaMetadata(movieMetadata).build();
+
+                    castPlayer.setSessionAvailabilityListener(new SessionAvailabilityListener() {
+                        @Override
+                        public void onCastSessionAvailable() {
+                            isCasting = true;
+                            final Long videoPosition = player.getCurrentPosition();
+
+                            resizeButton.setVisibility(View.GONE);
+                            player.setPlayWhenReady(false);
+                            castImage.setVisibility(View.VISIBLE);
+                            castPlayer.setMediaItem(mediaItem, videoPosition);
+                            playerView.setPlayer(castPlayer);
+                            playerView.setControllerShowTimeoutMs(0);
+                            playerView.setControllerHideOnTouch(false);
+                            //We perform a click because for some weird reason, the layout is black until the user clicks on it
+                            playerView.performClick();
+                        }
+
+                        @Override
+                        public void onCastSessionUnavailable() {
+                            isCasting = false;
+                            final Long videoPosition = castPlayer.getCurrentPosition();
+
+                            resizeButton.setVisibility(View.VISIBLE);
+                            castImage.setVisibility(View.GONE);
+                            playerView.setPlayer(player);
+                            player.setPlayWhenReady(true);
+                            player.seekTo(videoPosition);
+                            playerView.setControllerShowTimeoutMs(3000);
+                            playerView.setControllerHideOnTouch(true);
+                        }
+                    });
+
+                    castPlayer.addListener(new Player.Listener() {
+                        @Override
+                        public void onPlayerStateChanged(boolean playWhenReady, int state) {
+                            Map<String, Object> info = new HashMap<String, Object>() {
+                                {
+                                    put("currentTime", String.valueOf(player.getCurrentPosition() / 1000));
+                                }
+                            };
+                            switch (state) {
+                                case CastPlayer.STATE_READY:
+                                    if (castPlayer.isPlaying()) {
+                                        NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
+                                    } else {
+                                        NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
+                                    }
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    });
+
+                    castContext.addCastStateListener(castStateListener);
+                    mediaRouter.addCallback(mSelector, mediaRouterCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
+                } else {
+                    Exception e = task.getException();
+                    e.printStackTrace();
                 }
-        );
+            }
+        });
     }
 
     /**
@@ -1278,12 +1280,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // Empty implementation
     }
 
-    /**
-     * Selects audio and subtitle tracks based on user preferences.
-     * Applies track selection parameters to the player based on the subtitleTrackId,
-     * subtitleLocale, audioTrackId, and audioLocale properties.
-     */
-    private void selectTracks() {
+    private void selectTracksOld() {
         if (player != null && trackSelector != null) {
             Tracks tracks = player.getCurrentTracks();
 
@@ -1291,11 +1288,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
             boolean subtitleSelected = false;
 
             // Select audio track
-            if (audioTrackId != null || audioLocale != null) {
+            if (!audioTrackId.isEmpty() || !audioLocale.isEmpty()) {
                 Format selectedFormat = null;
 
                 // First try to find by ID and check locale if specified
-                if (audioTrackId != null) {
+                if (!audioTrackId.isEmpty()) {
                     for (Tracks.Group trackGroup : tracks.getGroups()) {
                         if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
                             Format format = trackGroup.getMediaTrackGroup().getFormat(0);
@@ -1307,12 +1304,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     }
                 }
 
-                if (selectedFormat != null && audioLocale != null && !selectedFormat.language.equals(audioLocale)) {
+                if (selectedFormat != null && !audioLocale.isEmpty() && !selectedFormat.language.equals(audioLocale)) {
                     selectedFormat = null;
                 }
 
                 // If not found and locale specified, try by locale only
-                if (selectedFormat == null && audioLocale != null) {
+                if (selectedFormat == null && !audioLocale.isEmpty()) {
                     for (Tracks.Group trackGroup : tracks.getGroups()) {
                         if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
                             Format format = trackGroup.getMediaTrackGroup().getFormat(0);
@@ -1326,20 +1323,32 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 // Apply the selected format if found
                 if (selectedFormat != null) {
-                    trackSelector.setParameters(
-                            trackSelector.buildUponParameters().setPreferredAudioLanguage(selectedFormat.language)
-                    );
+                    trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredAudioLanguage(selectedFormat.language));
                     audioSelected = true;
                     enableSubtitles(false);
                 }
             }
 
             // Select subtitle track
-            if (subtitleTrackId != null || subtitleLocale != null) {
+            if (!subtitleTrackId.isEmpty() || !subtitleLocale.isEmpty()) {
                 Format selectedFormat = null;
 
                 // First try to find by ID and check locale if specified
-                if (subtitleTrackId != null) {
+                if (!subtitleTrackId.isEmpty()) {
+                    Log.d(TAG, "LALA Subtitle track ID: " + subtitleTrackId);
+                    for (Tracks.Group trackGroup : tracks.getGroups()) {
+                        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
+                            if (format.id != null && format.id.equals(subtitleTrackId)) {
+                                Log.d(TAG, "LALA Subtitle track found - Language: " + format.language +
+                                        ", Label: " + format.label +
+                                        ", ID: " + format.id +
+                                        ", Type: " + trackGroup.getType() +
+                                        ", Selected: " + trackGroup.isSelected());
+                            }
+                        }
+                    }
+
                     for (Tracks.Group trackGroup : tracks.getGroups()) {
                         if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
                             Format format = trackGroup.getMediaTrackGroup().getFormat(0);
@@ -1351,12 +1360,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     }
                 }
 
-                if (selectedFormat != null && subtitleLocale != null && !selectedFormat.language.equals(subtitleLocale)) {
+                if (selectedFormat != null && !subtitleLocale.isEmpty() && !selectedFormat.language.equals(subtitleLocale)) {
                     selectedFormat = null;
                 }
 
                 // If not found and locale specified, try by locale only
-                if (selectedFormat == null && subtitleLocale != null) {
+                if (selectedFormat == null && !subtitleLocale.isEmpty()) {
                     for (Tracks.Group trackGroup : tracks.getGroups()) {
                         if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
                             Format format = trackGroup.getMediaTrackGroup().getFormat(0);
@@ -1370,50 +1379,173 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 // Apply the selected format if found
                 if (selectedFormat != null) {
-                    (trackSelector).setParameters(
-                            (trackSelector).buildUponParameters().setPreferredTextLanguage(selectedFormat.language)
-                    );
+                    trackSelector.setParameters((trackSelector).buildUponParameters().setPreferredTextLanguage(selectedFormat.language));
                     subtitleSelected = true;
                 }
             }
 
-            if (!audioSelected && !subtitleSelected && preferredLocale != null) {
-                Boolean trackFound = false;
+            if (subtitleTrackId.equals(DISABLED_TRACK)) {
+                // Disable subtitles
+                enableSubtitles(false);
+            }
+
+            if (!audioSelected && !subtitleSelected && !preferredLocale.isEmpty()) {
                 // First try to find the audio with the same language
                 for (Tracks.Group trackGroup : tracks.getGroups()) {
                     if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
                         Format format = trackGroup.getMediaTrackGroup().getFormat(0);
                         if (format.language != null && format.language.equals(preferredLocale)) {
-                            (trackSelector).setParameters(
-                                    (trackSelector).buildUponParameters()
-                                            .setPreferredAudioLanguage(preferredLocale)
-                            );
-                            trackFound = true;
-                            break;
+
+                            // Audio track found, select it and disable subtitles
+                            trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredAudioLanguage(preferredLocale));
+                            enableSubtitles(false);
+                            return;
                         }
                     }
                 }
 
-                if (!trackFound) {
-                    // Then try to find the subtitle with the same language
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.language != null && format.language.equals(preferredLocale)) {
-                                ((DefaultTrackSelector) trackSelector).setParameters(
-                                        ((DefaultTrackSelector) trackSelector).buildUponParameters()
-                                                .setPreferredTextLanguage(preferredLocale)
-                                );
-                            }
+                // Then try to find the subtitle with the same language
+                for (Tracks.Group trackGroup : tracks.getGroups()) {
+                    if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                        Format format = trackGroup.getMediaTrackGroup().getFormat(0);
+                        if (format.language != null && format.language.equals(preferredLocale)) {
+                            trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredTextLanguage(preferredLocale));
                         }
                     }
-                } else {
-                    // Disable subtitles
-                    enableSubtitles(false);
                 }
             }
         }
     }
 
+    /**
+     * Selects audio and subtitle tracks based on user preferences.
+     * Applies track selection parameters to the player based on the subtitleTrackId,
+     * subtitleLocale, audioTrackId, and audioLocale properties.
+     */
+    private void selectTracks() {
+        if (player != null && trackSelector != null) {
+            Tracks tracks = player.getCurrentTracks();
+            TrackSelectionParameters.Builder overridesBuilder = new TrackSelectionParameters.Builder(fragmentContext);
 
+            TrackSelectionOverride trackSelectionOverride = null;
+
+            final List<Integer> newTracks = new ArrayList<>();
+            newTracks.add(0);
+
+            TrackGroup audioGroup = null;
+            TrackGroup subtitleGroup = null;
+
+
+            // Select audio track
+            if (!audioTrackId.isEmpty() || !audioLocale.isEmpty()) {
+                Format selectedFormat = null;
+
+                // First try to find by ID and check locale if specified
+                if (!audioTrackId.isEmpty()) {
+                    audioGroup = getTrackGroupFromFormatId(C.TRACK_TYPE_AUDIO, audioTrackId);
+                    if (audioGroup != null) {
+                        selectedFormat = audioGroup.getFormat(0);
+                    }
+                }
+
+                if (selectedFormat != null && !audioLocale.isEmpty() && !selectedFormat.language.equals(audioLocale)) {
+                    audioGroup = null;
+                    selectedFormat = null;
+                }
+
+                // If not found and locale specified, try by locale only
+                if (audioGroup == null && !audioLocale.isEmpty()) {
+                    audioGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_AUDIO, audioLocale);
+                }
+            }
+
+            // Select subtitle track
+            if (!subtitleTrackId.isEmpty() || !subtitleLocale.isEmpty()) {
+                Format selectedFormat = null;
+
+                // First try to find by ID and check locale if specified
+                if (!subtitleTrackId.isEmpty()) {
+                    subtitleGroup = getTrackGroupFromFormatId(C.TRACK_TYPE_TEXT, subtitleTrackId);
+                    if (subtitleGroup != null) {
+                        selectedFormat = subtitleGroup.getFormat(0);
+                    }
+                }
+
+                if (selectedFormat != null && !subtitleLocale.isEmpty() && !selectedFormat.language.equals(subtitleLocale)) {
+                    subtitleGroup = null;
+                    selectedFormat = null;
+                }
+
+                // If not found and locale specified, try by locale only
+                if (subtitleGroup == null && !subtitleLocale.isEmpty()) {
+                    subtitleGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_TEXT, subtitleLocale);
+                }
+            }
+
+
+            if (audioGroup == null && subtitleGroup == null && !preferredLocale.isEmpty()) {
+                // First try to find the audio with the same language
+                audioGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_AUDIO, preferredLocale);
+
+                // Then try to find the subtitle with the same language
+                if (audioGroup == null) {
+                    subtitleGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_TEXT, preferredLocale);
+                }
+            }
+            if (subtitleTrackId.equals(DISABLED_TRACK)) {
+                subtitleGroup = null;
+                // Disable subtitles
+                enableSubtitles(false);
+            }
+
+            if (subtitleGroup != null) {
+                trackSelectionOverride = new TrackSelectionOverride(subtitleGroup, newTracks);
+                overridesBuilder.addOverride(trackSelectionOverride);
+            }
+            if (audioGroup != null) {
+                trackSelectionOverride = new TrackSelectionOverride(audioGroup, newTracks);
+                overridesBuilder.addOverride(trackSelectionOverride);
+            }
+            if (player != null) {
+                TrackSelectionParameters.Builder trackSelectionParametersBuilder = player.getTrackSelectionParameters().buildUpon();
+                if (trackSelectionOverride != null) {
+                    trackSelectionParametersBuilder.setOverrideForType(trackSelectionOverride);
+                }
+                player.setTrackSelectionParameters(trackSelectionParametersBuilder.build());
+            }
+
+        }
+    }
+
+    private TrackGroup getTrackGroupFromFormatId(int trackType, String id) {
+        if ((id == null && trackType == C.TRACK_TYPE_AUDIO) || player == null) {
+            return null;
+        }
+        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
+            if (group.getType() == trackType) {
+                final TrackGroup trackGroup = group.getMediaTrackGroup();
+                final Format format = trackGroup.getFormat(0);
+                if (Objects.equals(id, format.id)) {
+                    return trackGroup;
+                }
+            }
+        }
+        return null;
+    }
+
+    private TrackGroup getTrackGroupFromFormatLanguage(int trackType, String locale) {
+        if ((locale == null && trackType == C.TRACK_TYPE_AUDIO) || player == null) {
+            return null;
+        }
+        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
+            if (group.getType() == trackType) {
+                final TrackGroup trackGroup = group.getMediaTrackGroup();
+                final Format format = trackGroup.getFormat(0);
+                if (Objects.equals(locale, format.language)) {
+                    return trackGroup;
+                }
+            }
+        }
+        return null;
+    }
 }

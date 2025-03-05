@@ -168,15 +168,13 @@ public class SubtitleUtils {
      * @param uri              The URI of the subtitle file
      * @param subtitleName     The name of the subtitle (can be null)
      * @param subtitleLanguage The language of the subtitle (can be null)
-     * @param selected         Whether the subtitle should be selected by default
      * @return A subtitle configuration for ExoPlayer
      */
     public static MediaItem.SubtitleConfiguration buildSubtitle(
             Context context,
             Uri uri,
             String subtitleName,
-            String subtitleLanguage,
-            boolean selected) {
+            String subtitleLanguage) {
 
         final String subtitleMime = SubtitleUtils.getSubtitleMime(uri);
         // If no language is provided, try to detect it from the filename
@@ -192,11 +190,10 @@ public class SubtitleUtils {
                 .setMimeType(subtitleMime)
                 .setLanguage(language)
                 .setRoleFlags(C.ROLE_FLAG_SUBTITLE)
+                .setId(uri.toString())
                 .setLabel(subtitleName);
 
-        if (selected) {
-            //  subtitleConfigurationBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT);
-        }
+
         return subtitleConfigurationBuilder.build();
     }
 

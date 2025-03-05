@@ -107,8 +107,7 @@ public class SubtitleManager {
                         fragmentContext,
                         Uri.parse(subtitleItem.url),
                         subtitleItem.name,
-                        subtitleItem.lang,
-                        false
+                        subtitleItem.lang
                 );
 
                 subtitleConfigurations.add(subtitle);
@@ -132,49 +131,57 @@ public class SubtitleManager {
      * Updates the state of the custom subtitle button
      */
     public void updateCustomSubtitleButton() {
+        boolean useCustomButtonAndTrackMenu = false;
+
         // Check if subtitle tracks are available
         int totalSubtitles = 0;
-        boolean hasSubtitleTracks = false;
         if (player != null) {
             Tracks tracks = player.getCurrentTracks();
             for (Tracks.Group trackGroup : tracks.getGroups()) {
                 if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                    Format format = trackGroup.getMediaTrackGroup().getFormat(0);
+                    Log.d(TAG, "Subtitle track found - Language: " + format.language +
+                            ", Label: " + format.label +
+                            ", ID: " + format.id +
+                            ", Type: " + trackGroup.getType() +
+                            ", Selected: " + trackGroup.isSelected());
                     totalSubtitles++;
-                    hasSubtitleTracks = true;
                 }
             }
         }
 
-        this.playerView.setShowSubtitleButton(false);
-        if (totalSubtitles != 1 ||true) {
-            // Always use the native Android button
-            this.playerView.setShowSubtitleButton(true);
+        useCustomButtonAndTrackMenu = totalSubtitles == 1;
+
+        this.playerView.setShowSubtitleButton(!useCustomButtonAndTrackMenu);
+
+        ImageButton subtitleButton = fragmentView.findViewById(R.id.custom_subtitle_toggle);
+        if (subtitleButton == null) {
             return;
         }
-        // Update our custom button only if necessary
-        ImageButton subtitleButton = fragmentView.findViewById(R.id.custom_subtitle_toggle);
-        if (subtitleButton != null) {
-            // Show button only if subtitles are available
-            subtitleButton.setVisibility(hasSubtitleTracks ? View.VISIBLE : View.GONE);
-
-            // Update icon based on subtitle state
-            Format currentSubtitleTrack = getCurrentSubtitleTrack();
-            if (currentSubtitleTrack != null) {
-                subtitleButton.setImageResource(R.drawable.ic_subtitle_on);
-            } else {
-                subtitleButton.setImageResource(R.drawable.ic_subtitle_off);
-            }
-
-            // Configure context menu to display available subtitle tracks
-            if (hasSubtitleTracks) {
-                subtitleButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        showSubtitleTracksMenu(v);
-                    }
-                });
-            }
+        if (!useCustomButtonAndTrackMenu) {
+            subtitleButton.setVisibility(View.GONE);
+            return;
         }
+
+        // Show button only if subtitles are available
+        subtitleButton.setVisibility(View.VISIBLE);
+
+        // Update icon based on subtitle state
+        Format currentSubtitleTrack = getCurrentSubtitleTrack();
+        if (currentSubtitleTrack != null) {
+            subtitleButton.setImageResource(R.drawable.ic_subtitle_on);
+        } else {
+            subtitleButton.setImageResource(R.drawable.ic_subtitle_off);
+        }
+
+        // Configure context menu to display available subtitle tracks
+        subtitleButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showSubtitleTracksMenu(v);
+            }
+        });
+
     }
 
     /**
@@ -435,22 +442,22 @@ public class SubtitleManager {
                 TrackGroupArray textTrackGroups = mappedTrackInfo.getTrackGroups(textRendererIndex);
 
                 if (!enabled) {
-                    // Désactiver les sous-titres en effaçant toutes les sélections et overrides
+                    // Disable subtitles by clearing all selections and overrides
                     parametersBuilder.clearSelectionOverrides(textRendererIndex)
                             .setSelectionOverride(textRendererIndex, textTrackGroups, null);
                 } else {
-                    // Activer les sous-titres (laisse ExoPlayer choisir automatiquement)
+                    // Enable subtitles (let ExoPlayer choose automatically)
                     parametersBuilder.clearSelectionOverrides(textRendererIndex)
                             .setRendererDisabled(textRendererIndex, false);
                 }
 
-                // Appliquer les paramètres
+                // Apply parameters
                 defaultTrackSelector.setParameters(parametersBuilder.build());
 
-                // Forcer la mise à jour de l'UI
+                // Force UI update
                 playerView.invalidate();
 
-                // Mettre à jour l'état du bouton
+                // Update button state
                 updateCustomSubtitleButton();
 
                 Log.d(TAG, "Subtitles " + (enabled ? "enabled" : "disabled"));

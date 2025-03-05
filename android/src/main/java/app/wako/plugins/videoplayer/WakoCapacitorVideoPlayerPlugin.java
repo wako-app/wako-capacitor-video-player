@@ -1001,7 +1001,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                             @Override
                             public void run() {
                                 JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 notifyListeners("playerPause", data);
                             }
@@ -1010,12 +1009,11 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         NotificationCenter
                 .defaultCenter()
                 .addMethodForNotification(
-                        "playerItemReady",
+                        "playerStateReady",
                         new MyRunnable() {
                             @Override
                             public void run() {
                                 JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 notifyListeners("playerReady", data);
                             }
@@ -1024,12 +1022,11 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         NotificationCenter
                 .defaultCenter()
                 .addMethodForNotification(
-                        "playerItemEnd",
+                        "playerStateEnd",
                         new MyRunnable() {
                             @Override
                             public void run() {
                                 final JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 bridge
                                         .getActivity()
