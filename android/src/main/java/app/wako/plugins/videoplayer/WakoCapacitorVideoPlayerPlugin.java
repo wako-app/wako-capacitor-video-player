@@ -3,13 +3,11 @@ package app.wako.plugins.videoplayer;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.os.Build;
 import android.util.Log;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.getcapacitor.JSObject;
-import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -19,8 +17,6 @@ import com.getcapacitor.annotation.Permission;
 import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Notifications.MyRunnable;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
-import app.wako.plugins.videoplayer.PickerVideo.PickerVideoFragment;
-import app.wako.plugins.videoplayer.Utilities.FilesUtils;
 import app.wako.plugins.videoplayer.Utilities.FragmentUtils;
 
 import java.util.ArrayList;
@@ -39,10 +35,6 @@ import org.json.JSONObject;
 )
 public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
-
-    static final String PUBLICSTORAGE = "publicStorage";
-    static final String MEDIAVIDEO = "mediaVideo";
-
     private WakoCapacitorVideoPlayer implementation;
     private static final String TAG = "WakoCapacitorVideoPlayer";
     private final int frameLayoutViewId = 256;
@@ -54,13 +46,9 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
     private Boolean isTV;
     private Boolean exitOnEnd = true;
     private Boolean loopOnEnd = false;
-    private Boolean pipEnabled = false;
-    private Boolean bkModeEnabled = false;
     private Boolean showControls = true;
     private String displayMode = "all";
     private FullscreenExoPlayerFragment fsFragment;
-    private PickerVideoFragment pkFragment;
-    private FilesUtils filesUtils;
     private JSObject headers;
     private FragmentUtils fragmentUtils;
     private PluginCall call;
@@ -86,7 +74,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         // Get context
         this.context = getContext();
         implementation = new WakoCapacitorVideoPlayer(this.context);
-        this.filesUtils = new FilesUtils(this.context);
         this.fragmentUtils = new FragmentUtils(getBridge());
     }
 
@@ -98,14 +85,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("value", implementation.echo(value));
         call.resolve(ret);
-    }
-
-    private boolean isPermissionsGranted() {
-        String permissionSet = PUBLICSTORAGE;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionSet = MEDIAVIDEO;
-        }
-        return getPermissionState(permissionSet) == PermissionState.GRANTED;
     }
 
     @PluginMethod
@@ -158,7 +137,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
         // Reset subtitles for each new video
         subtitles = null;
-        
+
         if (call.getData().has("subtitles")) {
             try {
                 subtitles = call.getArray("subtitles");
@@ -249,21 +228,8 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         Log.v(TAG, "accentColor: " + accentColor);
         Log.v(TAG, "chromecast: " + chromecast);
         Log.v(TAG, "artwork: " + artwork);
-        if (url.equals("internal") || url.contains("DCIM") || url.contains("Documents")) {
-            // Check for permissions to access media video files
-            if (isPermissionsGranted()) {
-                _initPlayer(call);
-            } else {
-                this.bridge.saveCall(call);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    requestPermissionForAlias(MEDIAVIDEO, call, "permissionsCallback");
-                } else {
-                    requestPermissionForAlias(PUBLICSTORAGE, call, "permissionsCallback");
-                }
-            }
-        } else {
-            _initPlayer(call);
-        }
+
+        _initPlayer(call);
 
     }
 
@@ -752,7 +718,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
     }
 
 
-
     @PluginMethod
     public void exitPlayer(PluginCall call) {
         this.call = call;
@@ -798,7 +763,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
     private void _initPlayer(PluginCall call) {
         // get the videoPath
-        videoUrl = filesUtils.getFilePath(url);
+        videoUrl = url;
 
         if (videoUrl == null) {
             Map<String, Object> info = new HashMap<String, Object>() {
@@ -835,10 +800,9 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
                     String url = subtitleObj.getString("url");
                     if (url != null && !url.isEmpty()) {
-                        String subTitlePath = filesUtils.getFilePath(url);
                         String name = subtitleObj.has("name") ? subtitleObj.getString("name") : null;
                         String lang = subtitleObj.has("lang") ? subtitleObj.getString("lang") : null;
-                        subtitleItems.add(new SubtitleItem(subTitlePath, name, lang));
+                        subtitleItems.add(new SubtitleItem(url, name, lang));
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error parsing subtitle item: " + e.getMessage());
@@ -906,41 +870,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                 );
     }
 
-    private void createPickerVideoFragment(final PluginCall call) {
-        pkFragment = implementation.createPickerVideoFragment();
 
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "initPlayer");
-                                FrameLayout pickerLayoutView = getBridge().getActivity().findViewById(pickerLayoutViewId);
-                                if (pickerLayoutView != null) {
-                                    ret.put("result", false);
-                                    ret.put("message", "FrameLayout for VideoPicker already exists");
-                                } else {
-                                    // Initialize a new FrameLayout as container for fragment
-                                    pickerLayoutView = new FrameLayout(getActivity().getApplicationContext());
-                                    pickerLayoutView.setId(pickerLayoutViewId);
-                                    FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                                            FrameLayout.LayoutParams.MATCH_PARENT,
-                                            FrameLayout.LayoutParams.MATCH_PARENT
-                                    );
-                                    // Apply the Layout Parameters to frameLayout
-                                    pickerLayoutView.setLayoutParams(lp);
-
-                                    ((ViewGroup) getBridge().getWebView().getParent()).addView(pickerLayoutView);
-                                    fragmentUtils.loadFragment(pkFragment, pickerLayoutViewId);
-                                    ret.put("result", true);
-                                }
-                                call.resolve(ret);
-                            }
-                        }
-                );
-    }
 
     private Boolean isInRate(Float[] arr, Float rate) {
         Boolean ret = false;
