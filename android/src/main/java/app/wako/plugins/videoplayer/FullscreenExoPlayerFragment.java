@@ -2,11 +2,8 @@ package app.wako.plugins.videoplayer;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.ActivityManager;
-import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -14,11 +11,8 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Log;
-import android.util.Rational;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -31,7 +25,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
@@ -51,21 +44,13 @@ import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
-import androidx.media3.datasource.DataSource;
-import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.RenderersFactory;
 import androidx.media3.exoplayer.SeekParameters;
-import androidx.media3.exoplayer.dash.DashMediaSource;
-import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.ProgressiveMediaSource;
-import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
@@ -75,7 +60,6 @@ import androidx.media3.extractor.ts.TsExtractor;
 import androidx.media3.session.MediaSession;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.DefaultTimeBar;
-import androidx.media3.ui.PlayerControlView;
 import androidx.media3.ui.PlayerView;
 import androidx.mediarouter.app.MediaRouteButton;
 import androidx.mediarouter.media.MediaControlIntent;
@@ -91,14 +75,6 @@ import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
 
-import org.json.JSONException;
-
-import app.wako.plugins.videoplayer.Components.SubtitleItem;
-import app.wako.plugins.videoplayer.Components.SubtitleManager;
-import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
-import app.wako.plugins.videoplayer.Utilities.SubtitleUtils;
-
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -111,6 +87,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
+import app.wako.plugins.videoplayer.Components.SubtitleManager;
+import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
+import app.wako.plugins.videoplayer.Utilities.HelperUtils;
+import app.wako.plugins.videoplayer.Utilities.TrackUtils;
 
 /**
  * Fragment that handles full-screen video playback using ExoPlayer.
@@ -142,10 +124,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public long startAtSec;
 
     private static final String TAG = FullscreenExoPlayerFragment.class.getName();
-    private static final String DISABLED_TRACK = "#disabled";
 
     public static final long UNKNOWN_TIME = -1L;
-    private final List<String> supportedVideoFormats = Arrays.asList("mp4", "webm", "ogv", "3gp", "flv", "dash", "mpd", "m3u8", "ism", "ytube", "");
+
     private Player.Listener playerListener;
     private PlayerView playerView;
     private String videoType = null;
@@ -220,6 +201,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
         mediaRouteButton = fragmentView.findViewById(R.id.media_route_button);
         closeButton = fragmentView.findViewById(R.id.exo_close);
 
+      /*  View controlsBackground = fragmentView.findViewById(R.id.exo_controls_background);
+        View exoBottomBar = fragmentView.findViewById(R.id.exo_bottom_bar);*/
 
         videoProgressBar.setVisibility(View.GONE);
         currentTimeView.setVisibility(View.GONE);
@@ -238,6 +221,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
             isChromecastEnabled = false;
             displayMode = "landscape";
             resizeButton.setVisibility(View.GONE);
+
+            /*if (controlsBackground != null) {
+                controlsBackground.setBackgroundResource(R.color.black_80);
+            }*/
+        } else {
+           /* if (controlsBackground != null) {
+                controlsBackground.setBackgroundResource(R.color.black_80);
+            }
+            if (exoBottomBar != null) {
+                //  exoBottomBar.setBackgroundResource(R.color.black_80);
+            }*/
         }
 
         this.subtitleManager = new SubtitleManager(fragmentContext, fragmentView, subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "", subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "", subTitleOptions.has("fontSize") ? subTitleOptions.getInteger("fontSize") : 16, preferredLocale);
@@ -310,7 +304,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         Log.v(TAG, "display video url: " + videoUri);
 
         // get video type
-        videoType = getVideoType(videoUri);
+        videoType = HelperUtils.getVideoType(videoUri);
         Log.v(TAG, "display videoType: " + videoType);
 
         if (videoUri == null) {
@@ -362,6 +356,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         return fragmentView;
     }
+
 
     /**
      * Inner class for asynchronously loading and setting the cast image.
@@ -559,6 +554,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
             subtitles.clear();
             isMuted = false;
             currentVolume = (float) 0.5;
+
+            showSystemUI();
         }
     }
 
@@ -593,12 +590,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
     @SuppressLint("InlinedApi")
     private void hideSystemUi() {
         if (playerView != null) playerView.setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_LOW_PROFILE |
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                View.SYSTEM_UI_FLAG_LOW_PROFILE |
+                        View.SYSTEM_UI_FLAG_FULLSCREEN |
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
         );
     }
 
@@ -746,8 +743,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         firstReadyCalled = true;
                         NotificationCenter.defaultCenter().postNotification("playerStateReady", info);
 
-                        //  selectTracks();
-                        selectTracksOld();
+                        TrackUtils.selectTracksOldWay(player, trackSelector, subtitleTrackId, subtitleLocale, audioTrackId, audioLocale, preferredLocale);
                     }
 
                     subtitleManager.updateCustomSubtitleButton();
@@ -820,60 +816,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
          */
         @Override
         public void onTracksChanged(Tracks tracks) {
-            // Log current audio track
-            TrackGroup currentAudioTrack = null;
-            for (Tracks.Group trackGroup : tracks.getGroups()) {
-                if (trackGroup.isSelected() && trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
-                    currentAudioTrack = trackGroup.getMediaTrackGroup();
-                    break;
-                }
-            }
-
-            // Log current subtitle track
-            TrackGroup currentSubtitleTrack = null;
-            for (Tracks.Group trackGroup : tracks.getGroups()) {
-                if (trackGroup.isSelected() && trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                    currentSubtitleTrack = trackGroup.getMediaTrackGroup();
-                    break;
-                }
-            }
-
-            Log.v(TAG, "**** currentSubtitleTrack: " + currentSubtitleTrack);
-
-            // Create event data
-            Map<String, Object> trackInfo = new HashMap<String, Object>();
-
-            if (currentAudioTrack != null) {
-                Format audioFormat = currentAudioTrack.getFormat(0);
-                Map<String, Object> audioInfo = new HashMap<String, Object>();
-                audioInfo.put("id", audioFormat.id);
-                audioInfo.put("language", audioFormat.language);
-                audioInfo.put("label", audioFormat.label);
-                audioInfo.put("codecs", audioFormat.codecs);
-                audioInfo.put("bitrate", audioFormat.bitrate);
-                audioInfo.put("channelCount", audioFormat.channelCount);
-                audioInfo.put("sampleRate", audioFormat.sampleRate);
-                trackInfo.put("audioTrack", audioInfo);
-            }
-
-            Map<String, Object> subtitleInfo = new HashMap<String, Object>();
-            if (currentSubtitleTrack != null) {
-                Format subtitleFormat = currentSubtitleTrack.getFormat(0);
-                subtitleInfo.put("id", subtitleFormat.id);
-                subtitleInfo.put("language", subtitleFormat.language);
-                subtitleInfo.put("label", subtitleFormat.label);
-                subtitleInfo.put("codecs", subtitleFormat.codecs);
-                subtitleInfo.put("containerMimeType", subtitleFormat.containerMimeType);
-                subtitleInfo.put("sampleMimeType", subtitleFormat.sampleMimeType);
-
-            } else {
-                subtitleInfo.put("id", DISABLED_TRACK);
-            }
-            trackInfo.put("subtitleTrack", subtitleInfo);
-
-            NotificationCenter.defaultCenter().postNotification("playerTracksChanged", trackInfo);
-
-            subtitleManager.updateCustomSubtitleButton();
+            TrackUtils.onTracksChanged(subtitleManager, tracks);
         }
     }
 
@@ -978,21 +921,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
 
     /**
-     * Enables or disables subtitle display.
-     *
-     * @param enabled Whether subtitles should be displayed
-     */
-    public void enableSubtitles(boolean enabled) {
-
-        if (!enabled) {
-            trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED));
-        } else {
-            trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
-        }
-    }
-
-
-    /**
      * Checks if the player is currently playing.
      *
      * @return True if the player is playing, false otherwise
@@ -1009,8 +937,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
         player.setPlaybackParameters(param);
 
         /* If the user start the cast before the player is ready and playing, then the video will start
-          in the device and isChromecastEnabled at the same time. This is to avoid that behaviour.*/
-        if (!isCasting) player.setPlayWhenReady(true);
+          in the device and chromecast at the same time. This is to avoid that behaviour.*/
+        if (!isCasting) {
+            player.setPlayWhenReady(true);
+
+        }
     }
 
     /**
@@ -1130,42 +1061,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         button.setRemoteIndicatorDrawable(drawable);
     }
 
-    /**
-     * Determines the video type (MIME type) based on the URI.
-     * Supports various streaming formats like HLS, DASH, and progressive download.
-     *
-     * @param uri The URI of the video
-     * @return The identified MIME type
-     */
-    private String getVideoType(Uri uri) {
-        String ret = null;
-        Object obj = uri.getLastPathSegment();
-        String lastSegment = (obj == null) ? "" : uri.getLastPathSegment();
-        for (String type : supportedVideoFormats) {
-            if (ret != null) break;
-            if (lastSegment.length() > 0 && lastSegment.contains(type)) ret = type;
-            if (ret == null) {
-                List<String> segments = uri.getPathSegments();
-                if (segments.size() > 0) {
-                    String segment;
-                    if (segments.get(segments.size() - 1).equals("manifest")) {
-                        segment = segments.get(segments.size() - 2);
-                    } else {
-                        segment = segments.get(segments.size() - 1);
-                    }
-                    for (String sType : supportedVideoFormats) {
-                        if (segment.contains(sType)) {
-                            ret = sType;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        ret = (ret != null) ? ret : "";
-        return ret;
-    }
-
 
     /**
      * Initializes the Chromecast service.
@@ -1280,272 +1175,4 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // Empty implementation
     }
 
-    private void selectTracksOld() {
-        if (player != null && trackSelector != null) {
-            Tracks tracks = player.getCurrentTracks();
-
-            boolean audioSelected = false;
-            boolean subtitleSelected = false;
-
-            // Select audio track
-            if (!audioTrackId.isEmpty() || !audioLocale.isEmpty()) {
-                Format selectedFormat = null;
-
-                // First try to find by ID and check locale if specified
-                if (!audioTrackId.isEmpty()) {
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.id != null && format.id.equals(audioTrackId)) {
-                                selectedFormat = format;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (selectedFormat != null && !audioLocale.isEmpty() && !selectedFormat.language.equals(audioLocale)) {
-                    selectedFormat = null;
-                }
-
-                // If not found and locale specified, try by locale only
-                if (selectedFormat == null && !audioLocale.isEmpty()) {
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.language != null && format.language.equals(audioLocale)) {
-                                selectedFormat = format;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // Apply the selected format if found
-                if (selectedFormat != null) {
-                    trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredAudioLanguage(selectedFormat.language));
-                    audioSelected = true;
-                    enableSubtitles(false);
-                }
-            }
-
-            // Select subtitle track
-            if (!subtitleTrackId.isEmpty() || !subtitleLocale.isEmpty()) {
-                Format selectedFormat = null;
-
-                // First try to find by ID and check locale if specified
-                if (!subtitleTrackId.isEmpty()) {
-                    Log.d(TAG, "LALA Subtitle track ID: " + subtitleTrackId);
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.id != null && format.id.equals(subtitleTrackId)) {
-                                Log.d(TAG, "LALA Subtitle track found - Language: " + format.language +
-                                        ", Label: " + format.label +
-                                        ", ID: " + format.id +
-                                        ", Type: " + trackGroup.getType() +
-                                        ", Selected: " + trackGroup.isSelected());
-                            }
-                        }
-                    }
-
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.id != null && format.id.equals(subtitleTrackId)) {
-                                selectedFormat = format;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (selectedFormat != null && !subtitleLocale.isEmpty() && !selectedFormat.language.equals(subtitleLocale)) {
-                    selectedFormat = null;
-                }
-
-                // If not found and locale specified, try by locale only
-                if (selectedFormat == null && !subtitleLocale.isEmpty()) {
-                    for (Tracks.Group trackGroup : tracks.getGroups()) {
-                        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                            Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                            if (format.language != null && format.language.equals(subtitleLocale)) {
-                                selectedFormat = format;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // Apply the selected format if found
-                if (selectedFormat != null) {
-                    trackSelector.setParameters((trackSelector).buildUponParameters().setPreferredTextLanguage(selectedFormat.language));
-                    subtitleSelected = true;
-                }
-            }
-
-            if (subtitleTrackId.equals(DISABLED_TRACK)) {
-                // Disable subtitles
-                enableSubtitles(false);
-            }
-
-            if (!audioSelected && !subtitleSelected && !preferredLocale.isEmpty()) {
-                // First try to find the audio with the same language
-                for (Tracks.Group trackGroup : tracks.getGroups()) {
-                    if (trackGroup.getType() == C.TRACK_TYPE_AUDIO) {
-                        Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                        if (format.language != null && format.language.equals(preferredLocale)) {
-
-                            // Audio track found, select it and disable subtitles
-                            trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredAudioLanguage(preferredLocale));
-                            enableSubtitles(false);
-                            return;
-                        }
-                    }
-                }
-
-                // Then try to find the subtitle with the same language
-                for (Tracks.Group trackGroup : tracks.getGroups()) {
-                    if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-                        Format format = trackGroup.getMediaTrackGroup().getFormat(0);
-                        if (format.language != null && format.language.equals(preferredLocale)) {
-                            trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredTextLanguage(preferredLocale));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Selects audio and subtitle tracks based on user preferences.
-     * Applies track selection parameters to the player based on the subtitleTrackId,
-     * subtitleLocale, audioTrackId, and audioLocale properties.
-     */
-    private void selectTracks() {
-        if (player != null && trackSelector != null) {
-            Tracks tracks = player.getCurrentTracks();
-            TrackSelectionParameters.Builder overridesBuilder = new TrackSelectionParameters.Builder(fragmentContext);
-
-            TrackSelectionOverride trackSelectionOverride = null;
-
-            final List<Integer> newTracks = new ArrayList<>();
-            newTracks.add(0);
-
-            TrackGroup audioGroup = null;
-            TrackGroup subtitleGroup = null;
-
-
-            // Select audio track
-            if (!audioTrackId.isEmpty() || !audioLocale.isEmpty()) {
-                Format selectedFormat = null;
-
-                // First try to find by ID and check locale if specified
-                if (!audioTrackId.isEmpty()) {
-                    audioGroup = getTrackGroupFromFormatId(C.TRACK_TYPE_AUDIO, audioTrackId);
-                    if (audioGroup != null) {
-                        selectedFormat = audioGroup.getFormat(0);
-                    }
-                }
-
-                if (selectedFormat != null && !audioLocale.isEmpty() && !selectedFormat.language.equals(audioLocale)) {
-                    audioGroup = null;
-                    selectedFormat = null;
-                }
-
-                // If not found and locale specified, try by locale only
-                if (audioGroup == null && !audioLocale.isEmpty()) {
-                    audioGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_AUDIO, audioLocale);
-                }
-            }
-
-            // Select subtitle track
-            if (!subtitleTrackId.isEmpty() || !subtitleLocale.isEmpty()) {
-                Format selectedFormat = null;
-
-                // First try to find by ID and check locale if specified
-                if (!subtitleTrackId.isEmpty()) {
-                    subtitleGroup = getTrackGroupFromFormatId(C.TRACK_TYPE_TEXT, subtitleTrackId);
-                    if (subtitleGroup != null) {
-                        selectedFormat = subtitleGroup.getFormat(0);
-                    }
-                }
-
-                if (selectedFormat != null && !subtitleLocale.isEmpty() && !selectedFormat.language.equals(subtitleLocale)) {
-                    subtitleGroup = null;
-                    selectedFormat = null;
-                }
-
-                // If not found and locale specified, try by locale only
-                if (subtitleGroup == null && !subtitleLocale.isEmpty()) {
-                    subtitleGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_TEXT, subtitleLocale);
-                }
-            }
-
-
-            if (audioGroup == null && subtitleGroup == null && !preferredLocale.isEmpty()) {
-                // First try to find the audio with the same language
-                audioGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_AUDIO, preferredLocale);
-
-                // Then try to find the subtitle with the same language
-                if (audioGroup == null) {
-                    subtitleGroup = getTrackGroupFromFormatLanguage(C.TRACK_TYPE_TEXT, preferredLocale);
-                }
-            }
-            if (subtitleTrackId.equals(DISABLED_TRACK)) {
-                subtitleGroup = null;
-                // Disable subtitles
-                enableSubtitles(false);
-            }
-
-            if (subtitleGroup != null) {
-                trackSelectionOverride = new TrackSelectionOverride(subtitleGroup, newTracks);
-                overridesBuilder.addOverride(trackSelectionOverride);
-            }
-            if (audioGroup != null) {
-                trackSelectionOverride = new TrackSelectionOverride(audioGroup, newTracks);
-                overridesBuilder.addOverride(trackSelectionOverride);
-            }
-            if (player != null) {
-                TrackSelectionParameters.Builder trackSelectionParametersBuilder = player.getTrackSelectionParameters().buildUpon();
-                if (trackSelectionOverride != null) {
-                    trackSelectionParametersBuilder.setOverrideForType(trackSelectionOverride);
-                }
-                player.setTrackSelectionParameters(trackSelectionParametersBuilder.build());
-            }
-
-        }
-    }
-
-    private TrackGroup getTrackGroupFromFormatId(int trackType, String id) {
-        if ((id == null && trackType == C.TRACK_TYPE_AUDIO) || player == null) {
-            return null;
-        }
-        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
-            if (group.getType() == trackType) {
-                final TrackGroup trackGroup = group.getMediaTrackGroup();
-                final Format format = trackGroup.getFormat(0);
-                if (Objects.equals(id, format.id)) {
-                    return trackGroup;
-                }
-            }
-        }
-        return null;
-    }
-
-    private TrackGroup getTrackGroupFromFormatLanguage(int trackType, String locale) {
-        if ((locale == null && trackType == C.TRACK_TYPE_AUDIO) || player == null) {
-            return null;
-        }
-        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
-            if (group.getType() == trackType) {
-                final TrackGroup trackGroup = group.getMediaTrackGroup();
-                final Format format = trackGroup.getFormat(0);
-                if (Objects.equals(locale, format.language)) {
-                    return trackGroup;
-                }
-            }
-        }
-        return null;
-    }
 }

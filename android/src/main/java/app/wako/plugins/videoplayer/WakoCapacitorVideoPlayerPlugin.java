@@ -751,32 +751,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                 );
     }
 
-    @PluginMethod
-    public void enableSubtitles(PluginCall call) {
-        this.call = call;
-        boolean enabled = call.getBoolean("enabled", true);
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "enableSubtitles");
-                                if (fsFragment != null) {
-                                    fsFragment.enableSubtitles(enabled);
-                                    ret.put("result", true);
-                                    ret.put("value", enabled);
-                                    call.resolve(ret);
-                                } else {
-                                    ret.put("result", false);
-                                    ret.put("message", "Fullscreen fragment is not defined");
-                                    call.resolve(ret);
-                                }
-                            }
-                        }
-                );
-    }
+
 
     @PluginMethod
     public void exitPlayer(PluginCall call) {
