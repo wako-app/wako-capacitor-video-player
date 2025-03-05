@@ -31,7 +31,6 @@ npx cap sync
 * [`showController()`](#showcontroller)
 * [`isControllerIsFullyVisible()`](#iscontrollerisfullyvisible)
 * [`exitPlayer()`](#exitplayer)
-* [`enableSubtitles(...)`](#enablesubtitles)
 * [`addListener('playerReady', ...)`](#addlistenerplayerready-)
 * [`addListener('playerPlay', ...)`](#addlistenerplayerplay-)
 * [`addListener('playerPause', ...)`](#addlistenerplayerpause-)
@@ -304,23 +303,6 @@ Exit player
 --------------------
 
 
-### enableSubtitles(...)
-
-```typescript
-enableSubtitles(options: capVideoSubtitlesOptions) => Promise<capVideoPlayerResult>
-```
-
-Enable or disable subtitles
-
-| Param         | Type                                                                          | Description                                                           |
-| ------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **`options`** | <code><a href="#capvideosubtitlesoptions">capVideoSubtitlesOptions</a></code> | Object containing the enabled flag (true to enable, false to disable) |
-
-**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
-
---------------------
-
-
 ### addListener('playerReady', ...)
 
 ```typescript
@@ -503,14 +485,6 @@ addListener(eventName: 'playerTracksChanged', listenerFunc: PlayerTracksChanged)
 | Prop       | Type                | Description |
 | ---------- | ------------------- | ----------- |
 | **`rate`** | <code>number</code> | Rate value  |
-
-
-#### capVideoSubtitlesOptions
-
-| Prop           | Type                 | Description                 |
-| -------------- | -------------------- | --------------------------- |
-| **`playerId`** | <code>string</code>  | Player Id                   |
-| **`enabled`**  | <code>boolean</code> | Enable or disable subtitles |
 
 
 #### PluginListenerHandle

@@ -91,13 +91,6 @@ export interface WakoCapacitorVideoPlayerPlugin {
    *
    */
   exitPlayer(): Promise<capVideoPlayerResult>;
-
-  /**
-   * Enable or disable subtitles
-   * @param options Object containing the enabled flag (true to enable, false to disable)
-   */
-  enableSubtitles(options: capVideoSubtitlesOptions): Promise<capVideoPlayerResult>;
-
   /**
    * Listen for changes in the App's active state (whether the app is in the foreground or background)
    *
