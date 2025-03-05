@@ -9,10 +9,12 @@ import android.provider.OpenableColumns;
 import android.util.TypedValue;
 import android.view.View;
 
+import androidx.annotation.OptIn;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.TrackSelector;
@@ -197,6 +199,7 @@ public class SubtitleUtils {
         return subtitleConfigurationBuilder.build();
     }
 
+    @OptIn(markerClass = UnstableApi.class)
     public static void setSubtitleStyle(
             String subtitleForegroundColor,
             String subtitleBackgroundColor,
@@ -221,5 +224,17 @@ public class SubtitleUtils {
 
         playerView.getSubtitleView().setVisibility(View.VISIBLE);
 
+    }
+
+
+    @OptIn(markerClass = UnstableApi.class)
+    public static void enableSubtitles(DefaultTrackSelector trackSelector) {
+        trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
+    }
+
+
+    @OptIn(markerClass = UnstableApi.class)
+    public static void disableSubtitles(DefaultTrackSelector trackSelector) {
+        trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED));
     }
 }
