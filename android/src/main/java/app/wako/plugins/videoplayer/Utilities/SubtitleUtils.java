@@ -214,16 +214,23 @@ public class SubtitleUtils {
         if (subtitleBackgroundColor.length() > 4 && subtitleBackgroundColor.startsWith("rgba")) {
             background = SubtitleUtils.getColorFromRGBA(subtitleBackgroundColor);
         }
-        playerView
-                .getSubtitleView()
-                .setStyle(
-                        new CaptionStyleCompat(foreground, background, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_NONE, Color.WHITE, null)
-                );
-        playerView.getSubtitleView().setFixedTextSize(TypedValue.COMPLEX_UNIT_DIP, subtitleFontSize);
 
+        CaptionStyleCompat style = new CaptionStyleCompat(
+            foreground,
+            background,
+            Color.TRANSPARENT,
+            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+            Color.BLACK,
+            null
+        );
+
+        playerView.getSubtitleView().setStyle(style);
+        playerView.getSubtitleView().setFixedTextSize(TypedValue.COMPLEX_UNIT_DIP, subtitleFontSize);
+        playerView.getSubtitleView().setApplyEmbeddedStyles(true);
+        playerView.getSubtitleView().setApplyEmbeddedFontSizes(true);
+        playerView.getSubtitleView().setBottomPaddingFraction(0.05f);
 
         playerView.getSubtitleView().setVisibility(View.VISIBLE);
-
     }
 
 

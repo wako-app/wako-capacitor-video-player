@@ -100,7 +100,7 @@ import app.wako.plugins.videoplayer.Utilities.TrackUtils;
  * Chromecast integration, and various playback controls.
  */
 @UnstableApi
-public class FullscreenExoPlayerFragment extends Fragment {
+public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Callback {
     public String videoUrl;
     public Float playbackRate;
 
@@ -201,8 +201,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         mediaRouteButton = fragmentView.findViewById(R.id.media_route_button);
         closeButton = fragmentView.findViewById(R.id.exo_close);
 
-      /*  View controlsBackground = fragmentView.findViewById(R.id.exo_controls_background);
-        View exoBottomBar = fragmentView.findViewById(R.id.exo_bottom_bar);*/
+        View controlsBackground = fragmentView.findViewById(R.id.exo_controls_background);
 
         videoProgressBar.setVisibility(View.GONE);
         currentTimeView.setVisibility(View.GONE);
@@ -222,16 +221,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
             displayMode = "landscape";
             resizeButton.setVisibility(View.GONE);
 
-            /*if (controlsBackground != null) {
-                controlsBackground.setBackgroundResource(R.color.black_80);
-            }*/
-        } else {
-           /* if (controlsBackground != null) {
+            if (controlsBackground != null) {
                 controlsBackground.setBackgroundResource(R.color.black_80);
             }
-            if (exoBottomBar != null) {
-                //  exoBottomBar.setBackgroundResource(R.color.black_80);
-            }*/
+        } else {
+            if (controlsBackground != null) {
+                controlsBackground.setBackgroundResource(R.color.black_50);
+            }
         }
 
         this.subtitleManager = new SubtitleManager(fragmentContext, fragmentView, subTitleOptions.has("foregroundColor") ? subTitleOptions.getString("foregroundColor") : "", subTitleOptions.has("backgroundColor") ? subTitleOptions.getString("backgroundColor") : "", subTitleOptions.has("fontSize") ? subTitleOptions.getInteger("fontSize") : 16, preferredLocale);
@@ -316,28 +312,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
         getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Configure key handling on PlayerView directly
-        playerView.setOnKeyListener(new View.OnKeyListener() {
-            @Override
-            public boolean onKey(View v, int keyCode, KeyEvent event) {
-                Log.d(TAG, "PlayerView onKey event received: keyCode=" + keyCode + ", action=" + event.getAction());
-                if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    boolean handled = onKeyDown(keyCode, event);
-                    Log.d(TAG, "PlayerView onKeyDown handled: " + handled);
-                    return handled;
-                }
-                return false;
-            }
-        });
 
         // Make PlayerView focusable and give it initial focus
-        playerView.setFocusable(true);
-        playerView.setFocusableInTouchMode(true);
-        playerView.requestFocus();
 
         getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
+
                 closeButton.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
@@ -901,7 +882,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 if (isTvDevice) {
                     if (controllerVisible && player != null && player.isPlaying()) {
                         playerView.hideController();
-                        return true;
                     } else {
                         backPressed();
                     }
@@ -1173,6 +1153,38 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     private final class EmptyCallback extends MediaRouter.Callback {
         // Empty implementation
+    }
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // Add callback for back press
+        requireActivity().getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (isTvDevice) {
+                    if (controllerVisible && player != null && player.isPlaying()) {
+                        playerView.hideController();
+                    } else {
+                        backPressed();
+                    }
+                } else {
+                    backPressed();
+                }
+            }
+        });
+
+        // Add key event interceptor
+        requireActivity().getWindow().getDecorView().setOnKeyListener(new View.OnKeyListener() {
+            @Override
+            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    return onKeyDown(keyCode, event);
+                }
+                return false;
+            }
+        });
     }
 
 }
