@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -55,6 +56,7 @@ import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.MappingTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
@@ -71,12 +73,16 @@ import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
+import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
+import com.google.android.gms.cast.framework.SessionManager;
+import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -84,16 +90,23 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.Locale;
 
 import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Components.SubtitleManager;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
 import app.wako.plugins.videoplayer.Utilities.HelperUtils;
 import app.wako.plugins.videoplayer.Utilities.TrackUtils;
+import app.wako.plugins.videoplayer.Utilities.BrightnessControl;
+import app.wako.plugins.videoplayer.Utilities.VolumeControl;
+import app.wako.plugins.videoplayer.Utilities.SystemUiHelper;
 
 /**
  * Fragment that handles full-screen video playback using ExoPlayer.
@@ -128,6 +141,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     public static final long UNKNOWN_TIME = -1L;
 
+    public static int volumeBoost = 0;
+
     private Player.Listener playerListener;
     private PlayerView playerView;
     private String videoType = null;
@@ -160,6 +175,36 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private TextView forwardIndicator;
     private Handler indicatorHandler = new Handler(Looper.getMainLooper());
 
+    // Variables for gesture controls
+    private float initialX;
+    private float initialY;
+    private float initialBrightness;
+    private float initialVolume;
+    private boolean isChangingVolume = false;
+    private boolean isChangingBrightness = false;
+    private boolean isChangingPosition = false;
+    private boolean restorePlayState = false;
+    private long initialPosition;
+    private long totalDuration;
+    
+    // Thresholds for gesture detection
+    private static final float SWIPE_THRESHOLD = 20f;
+    private static final float SWIPE_VELOCITY_THRESHOLD = 150f;
+    
+    // Indicators for brightness, volume and seeking
+    private TextView brightnessIndicator;
+    private TextView volumeIndicator;
+    private TextView seekIndicator;
+    
+    // Window manager for changing brightness
+    private WindowManager.LayoutParams layoutParams;
+    
+    // BrightnessControl
+    private BrightnessControl mBrightnessControl;
+    private AudioManager mAudioManager;
+
+    private boolean firstReadyCalled = false;
+
     // Tag for the instance state bundle.
     private static final String PLAYBACK_TIME = "play_time";
 
@@ -179,8 +224,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private SubtitleManager subtitleManager;
     public static boolean controllerVisible;
     public static boolean controllerVisibleFully;
-
-    private boolean firstReadyCalled = false;
 
     /**
      * Creates and configures the fragment view with all necessary UI components.
@@ -214,6 +257,22 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // Initialize double tap indicators
         rewindIndicator = fragmentView.findViewById(R.id.rewind_indicator);
         forwardIndicator = fragmentView.findViewById(R.id.forward_indicator);
+
+        // Initialize gesture indicators
+        brightnessIndicator = fragmentView.findViewById(R.id.brightness_indicator);
+        volumeIndicator = fragmentView.findViewById(R.id.volume_indicator);
+        seekIndicator = fragmentView.findViewById(R.id.seek_indicator);
+        
+        // Initialize BrightnessControl
+        if (getActivity() != null) {
+            layoutParams = getActivity().getWindow().getAttributes();
+            mBrightnessControl = new BrightnessControl(getActivity());
+            initialBrightness = mBrightnessControl.getScreenBrightness();
+            mBrightnessControl.currentBrightnessLevel = 15; // Niveau de luminosité moyen par défaut
+        }
+        
+        // Get AudioManager
+        mAudioManager = (AudioManager) fragmentContext.getSystemService(Context.AUDIO_SERVICE);
 
         // Initialize the GestureDetector to detect double taps
         gestureDetector = new GestureDetector(fragmentContext, new GestureDetector.SimpleOnGestureListener() {
@@ -267,8 +326,167 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                gestureDetector.onTouchEvent(event);
-                return true;
+                // Gérer les gestes avec notre détecteur de gestes personnalisé
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = event.getX();
+                        initialY = event.getY();
+                        initialPosition = player != null ? player.getCurrentPosition() : 0;
+                        totalDuration = player != null ? player.getDuration() : 0;
+                        initialVolume = player != null ? player.getVolume() : 0.5f;
+                        isChangingVolume = false;
+                        isChangingBrightness = false;
+                        isChangingPosition = false;
+                        return true;
+                        
+                    case MotionEvent.ACTION_MOVE:
+                        float deltaX = event.getX() - initialX;
+                        float deltaY = event.getY() - initialY;
+                        
+                        // Déterminer le type de geste (horizontal ou vertical)
+                        if (!isChangingVolume && !isChangingBrightness && !isChangingPosition) {
+                            if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaX) > Math.abs(deltaY)) {
+                                // Geste horizontal - recherche
+                                isChangingPosition = true;
+                                if (player != null && player.isPlaying()) {
+                                    player.pause();
+                                    restorePlayState = true;
+                                }
+                            } else if (Math.abs(deltaY) > SWIPE_THRESHOLD) {
+                                // Geste vertical
+                                float screenWidth = playerView.getWidth();
+                                if (initialX < screenWidth / 2) {
+                                    // Côté gauche - Luminosité
+                                    isChangingBrightness = true;
+                                    if (mBrightnessControl != null) {
+                                        initialBrightness = mBrightnessControl.getScreenBrightness();
+                                    }
+                                } else {
+                                    // Côté droit - Volume
+                                    isChangingVolume = true;
+                                }
+                            }
+                        }
+                        
+                        // Gestion de la recherche (position)
+                        if (isChangingPosition && player != null) {
+                            // Calculer la nouvelle position en fonction du déplacement horizontal
+                            float seekFactor = Math.min(Math.max(deltaX / playerView.getWidth(), -1f), 1f);
+                            long seekChange = (long) (totalDuration * seekFactor * 0.1); // 10% du temps total pour un swipe complet
+                            long newPosition = Math.max(0, Math.min(totalDuration, initialPosition + seekChange));
+                            
+                            // Afficher l'indicateur
+                            seekIndicator.setVisibility(View.VISIBLE);
+                            seekIndicator.setText(formatTime(newPosition) + " / " + formatTime(totalDuration));
+                            
+                            // Appliquer la recherche
+                            player.seekTo(newPosition);
+                        }
+                        
+                        // Gestion de la luminosité
+                        if (isChangingBrightness && mBrightnessControl != null) {
+                            // Calcul de l'ajustement de la luminosité basé sur le déplacement vertical
+                            float brightnessChange = -deltaY / playerView.getHeight(); // Négatif car vers le haut augmente
+                            float newBrightness;
+                            
+                            // Si nous sommes près du bas de l'écran et en train de baisser la luminosité
+                            if (initialBrightness <= 0.01f && brightnessChange < 0) {
+                                // Passer en mode automatique
+                                newBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+                                brightnessIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_brightness_auto_24dp), null, null, null);
+                                brightnessIndicator.setText("Auto");
+                            } else {
+                                // Sinon, ajuster normalement la luminosité
+                                newBrightness = Math.min(Math.max(initialBrightness + brightnessChange, 0.01f), 1f);
+                                int brightnessPercentage = (int) (newBrightness * 100);
+                                brightnessIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_brightness_medium_24), null, null, null);
+                                brightnessIndicator.setText(brightnessPercentage + "%");
+                            }
+                            
+                            // Appliquer la luminosité
+                            mBrightnessControl.setScreenBrightness(newBrightness);
+                            
+                            // Afficher l'indicateur
+                            brightnessIndicator.setVisibility(View.VISIBLE);
+                        }
+                        
+                        // Gestion du volume
+                        if (isChangingVolume) {
+                            // Calcul de l'ajustement du volume basé sur le déplacement vertical
+                            float volumeChange = -deltaY / playerView.getHeight(); // Négatif car vers le haut augmente
+                            float newVolume = Math.min(Math.max(initialVolume + volumeChange, 0f), 1f);
+                            
+                            if (player != null) {
+                                player.setVolume(newVolume);
+                            }
+                            
+                            // Afficher l'indicateur de volume avec l'icône appropriée
+                            volumeIndicator.setVisibility(View.VISIBLE);
+                            if (newVolume < 0.01f) {
+                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_off_24dp), null, null, null);
+                                volumeIndicator.setText("0%");
+                            } else {
+                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_up_24dp), null, null, null);
+                                volumeIndicator.setText(Math.round(newVolume * 100) + "%");
+                            }
+                            
+                            // Ajuster le volume système
+                            if (mAudioManager != null) {
+                                int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                                int currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                                
+                                if (volumeChange > 0 && currentVolume < maxVolume) {
+                                    VolumeControl.adjustVolume(fragmentContext, mAudioManager, player, true, VolumeControl.isVolumeMax(mAudioManager));
+                                } else if (volumeChange < 0 && currentVolume > 0) {
+                                    VolumeControl.adjustVolume(fragmentContext, mAudioManager, player, false, false);
+                                }
+                            }
+                        }
+                        
+                        return true;
+                        
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        // Masquer les indicateurs après un court délai
+                        if (isChangingBrightness || isChangingVolume || isChangingPosition) {
+                            Handler handler = new Handler(Looper.getMainLooper());
+                            handler.postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (volumeIndicator != null) volumeIndicator.setVisibility(View.GONE);
+                                    if (brightnessIndicator != null) brightnessIndicator.setVisibility(View.GONE);
+                                    if (seekIndicator != null) seekIndicator.setVisibility(View.GONE);
+                                }
+                            }, 1000); // Masquer après 1 seconde
+                            
+                            // Restaurer la lecture si elle a été mise en pause pour le seek
+                            if (isChangingPosition && restorePlayState && player != null) {
+                                player.play();
+                                restorePlayState = false;
+                            }
+                        }
+                        
+                        // Passer l'événement au détecteur de gestes pour les autres actions
+                        boolean gestureResult = gestureDetector.onTouchEvent(event);
+                        
+                        // Si le gestureDetector n'a pas consommé l'événement (il retourne false)
+                        // et c'est un simple tap (ACTION_UP), alors afficher/masquer les contrôles
+                        if (!gestureResult && event.getAction() == MotionEvent.ACTION_UP) {
+                            if (!isChangingVolume && !isChangingBrightness && !isChangingPosition) {
+                                if (controllerVisibleFully) {
+                                    playerView.hideController();
+                                } else {
+                                    playerView.showController();
+                                }
+                                return true;
+                            }
+                        }
+                        
+                        return true;
+                }
+                
+                // Passer l'événement au détecteur de gestes pour les autres actions
+                return gestureDetector.onTouchEvent(event);
             }
         });
 
@@ -344,6 +562,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 controllerVisible = visibility == View.VISIBLE;
                 controllerVisibleFully = playerView.isControllerFullyVisible();
+                
+                // Ajustons la visibilité des barres système en fonction de la visibilité du contrôleur
+                if (visibility == View.VISIBLE) {
+                    showSystemUI();
+                } else {
+                    hideSystemUi();
+                }
             }
         });
 
@@ -522,6 +747,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
     }
 
+    /**
+     * Formate le temps en millisecondes en chaîne MM:SS
+     */
+    private String formatTime(long timeMs) {
+        long totalSeconds = timeMs / 1000;
+        long minutes = totalSeconds / 60;
+        long seconds = totalSeconds % 60;
+        return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
+    }
 
     /**
      * Lifecycle method called when the fragment becomes visible to the user.
@@ -634,14 +868,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     @SuppressLint("InlinedApi")
     private void hideSystemUi() {
-        if (playerView != null) playerView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LOW_PROFILE |
-                        View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-        );
+        updateSystemUiVisibility(false);
     }
 
     /**
@@ -649,9 +876,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Clears fullscreen flags and makes status bar visible again.
      */
     private void showSystemUI() {
-        getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getActivity().getWindow().getDecorView().setSystemUiVisibility(View.VISIBLE);
+        updateSystemUiVisibility(true);
     }
 
     /**
@@ -1290,6 +1515,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         });
             }
         }, 800);
+    }
+
+    private void updateSystemUiVisibility(boolean show) {
+        // Utiliser notre helper pour gérer la visibilité de la barre de statut
+        SystemUiHelper.toggleSystemUi(getActivity(), playerView, show);
     }
 
 }
