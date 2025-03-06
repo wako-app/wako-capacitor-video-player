@@ -100,7 +100,7 @@ import app.wako.plugins.videoplayer.Utilities.TrackUtils;
  * Chromecast integration, and various playback controls.
  */
 @UnstableApi
-public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Callback {
+public class FullscreenExoPlayerFragment extends Fragment {
     public String videoUrl;
     public Float playbackRate;
 
@@ -628,6 +628,9 @@ public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Ca
                 .setBandwidthMeter(bandwidthMeter)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory)).build();
 
+        if (mediaSession != null) {
+            mediaSession.release();
+        }
         mediaSession = new MediaSession.Builder(fragmentContext, player).build();
 
         player.addListener(playerListener);
@@ -780,7 +783,9 @@ public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Ca
             if (playWhenReady) {
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPlay ");
                 NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
-                resizeButton.setVisibility(View.VISIBLE);
+                if(!isTvDevice) {
+                    resizeButton.setVisibility(View.VISIBLE);
+                }
 
             } else {
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPause ");
@@ -1105,7 +1110,9 @@ public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Ca
                             isCasting = false;
                             final Long videoPosition = castPlayer.getCurrentPosition();
 
-                            resizeButton.setVisibility(View.VISIBLE);
+                            if(!isTvDevice) {
+                                resizeButton.setVisibility(View.VISIBLE);
+                            }
                             castImage.setVisibility(View.GONE);
                             playerView.setPlayer(player);
                             player.setPlayWhenReady(true);
@@ -1158,7 +1165,7 @@ public class FullscreenExoPlayerFragment extends Fragment implements KeyEvent.Ca
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         // Add callback for back press
         requireActivity().getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             @Override

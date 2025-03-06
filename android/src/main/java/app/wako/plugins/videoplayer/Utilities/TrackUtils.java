@@ -37,7 +37,7 @@ public class TrackUtils {
             String audioLocale,
             String preferredLocale
     ) {
-        if (player != null || trackSelector != null) {
+        if (player == null || trackSelector == null) {
             return;
         }
         Tracks tracks = player.getCurrentTracks();
