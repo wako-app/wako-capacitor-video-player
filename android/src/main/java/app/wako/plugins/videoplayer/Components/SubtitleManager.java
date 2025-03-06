@@ -3,6 +3,7 @@ package app.wako.plugins.videoplayer.Components;
 import android.content.Context;
 import android.media.Image;
 import android.net.Uri;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageButton;
@@ -43,12 +44,41 @@ public class SubtitleManager {
 
     private static final String TAG = SubtitleManager.class.getName();
 
+    /**
+     * Récupère la taille de police par défaut du système
+     * @param context Le contexte de l'application
+     * @return La taille de police en sp (scaled pixels)
+     */
+    private int getSystemDefaultFontSize(Context context) {
+        float scaledDensity = context.getResources().getDisplayMetrics().scaledDensity;
+        try {
+            // Essayer de récupérer la taille de police système via les paramètres du système
+            float systemFontScale = Settings.System.getFloat(
+                    context.getContentResolver(),
+                    Settings.System.FONT_SCALE, 1.0f);
+            
+            // Base de 14sp multipliée par l'échelle de police du système
+            return Math.round(14 * systemFontScale);
+        } catch (Exception e) {
+            Log.e(TAG, "Erreur lors de la récupération de la taille de police système: " + e.getMessage());
+            // Valeur par défaut si échec
+            return 16;
+        }
+    }
+
     public SubtitleManager(Context fragmentContext, View fragmentView, String subtitleForegroundColor, String subtitleBackgroundColor, Integer subtitleFontSize, String preferredLocale) {
         this.fragmentContext = fragmentContext;
         this.fragmentView = fragmentView;
         this.subtitleForegroundColor = subtitleForegroundColor;
         this.subtitleBackgroundColor = subtitleBackgroundColor;
-        this.subtitleFontSize = subtitleFontSize;
+        
+        // Si aucune taille spécifiée, utiliser la taille système par défaut
+        if (subtitleFontSize == null) {
+            this.subtitleFontSize = getSystemDefaultFontSize(fragmentContext);
+        } else {
+            this.subtitleFontSize = subtitleFontSize;
+        }
+        
         this.preferredLocale = preferredLocale;
 
         this.playerView = fragmentView.findViewById(R.id.videoViewId);
