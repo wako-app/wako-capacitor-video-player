@@ -6,18 +6,20 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.provider.OpenableColumns;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 
 import androidx.annotation.OptIn;
-import androidx.documentfile.provider.DocumentFile;
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.TrackGroup;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
-import androidx.media3.exoplayer.trackselection.TrackSelector;
 import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.PlayerView;
 
@@ -32,6 +34,13 @@ import java.util.List;
  * color conversion, and building subtitle configurations for ExoPlayer.
  */
 public class SubtitleUtils {
+
+    private static final String TAG = "SubtitleUtils";
+    
+    // Store the last selected subtitle track information
+    private static Format lastSelectedSubtitleTrack = null;
+    private static int lastSelectedGroupIndex = -1;
+    private static int lastSelectedTrackIndex = -1;
 
     /**
      * Determines the MIME type of a subtitle file based on its URI.
@@ -233,15 +242,178 @@ public class SubtitleUtils {
         playerView.getSubtitleView().setVisibility(View.VISIBLE);
     }
 
+    /**
+     * Enables subtitles and attempts to restore the previously selected subtitle track.
+     * If no track was previously selected, selects the first available subtitle track.
+     *
+     * @param trackSelector The track selector to configure
+     * @param player The ExoPlayer instance to get tracks from
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    public static void enableSubtitles(DefaultTrackSelector trackSelector, ExoPlayer player) {
+        // Enable subtitles by not ignoring them in the selector
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
+        
+        Tracks tracks = player.getCurrentTracks();
+        boolean subtitleSelected = false;
+        
+        // Try to restore the last selected subtitle if we have one stored
+        if (lastSelectedSubtitleTrack != null && lastSelectedGroupIndex >= 0 && lastSelectedTrackIndex >= 0) {
+            int currentGroupIndex = 0;
+            
+            for (Tracks.Group trackGroup : tracks.getGroups()) {
+                if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                    if (currentGroupIndex == lastSelectedGroupIndex) {
+                        TrackGroup group = trackGroup.getMediaTrackGroup();
+                        // Check if the saved track index is valid for this group
+                        if (lastSelectedTrackIndex < group.length) {
+                            // Apply the selection manually by matching the track
+                            Format format = group.getFormat(lastSelectedTrackIndex);
+                            if (format.language != null) {
+                                trackSelector.setParameters(
+                                    trackSelector.buildUponParameters()
+                                        .setPreferredTextLanguage(format.language)
+                                );
+                                Log.d(TAG, "Restored subtitle track with language: " + format.language);
+                                subtitleSelected = true;
+                                break;
+                            }
+                        }
+                    }
+                    currentGroupIndex++;
+                }
+            }
+        }
+        
+        // If no subtitle was selected or restored, select the first available subtitle track
+        if (!subtitleSelected) {
+            for (Tracks.Group trackGroup : tracks.getGroups()) {
+                if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                    TrackGroup group = trackGroup.getMediaTrackGroup();
+                    if (group.length > 0) {
+                        Format format = group.getFormat(0);
+                        if (format.language != null) {
+                            trackSelector.setParameters(
+                                trackSelector.buildUponParameters()
+                                    .setPreferredTextLanguage(format.language)
+                            );
+                            Log.d(TAG, "Selected first available subtitle track with language: " + format.language);
+                        } else {
+                            // If no language info, still try to select it
+                            trackSelector.setParameters(
+                                trackSelector.buildUponParameters()
+                                    .setPreferredTextLanguage("")  // Empty string to match any subtitle
+                            );
+                            Log.d(TAG, "Selected first available subtitle track (no language info)");
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
+    /**
+     * Enables subtitles without restoring a specific track (backward compatibility)
+     * 
+     * @param trackSelector The track selector to configure
+     */
     @OptIn(markerClass = UnstableApi.class)
     public static void enableSubtitles(DefaultTrackSelector trackSelector) {
-        trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT));
     }
 
+    /**
+     * Disables subtitles but stores the currently selected track for later restoration
+     *
+     * @param trackSelector The track selector to configure
+     * @param player The ExoPlayer instance to get the current subtitle track from
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    public static void disableSubtitles(DefaultTrackSelector trackSelector, ExoPlayer player) {
+        // Store the currently selected subtitle track before disabling
+        storeCurrentSubtitleTrack(player);
+        
+        // Disable all subtitle tracks by setting a very high selection flag
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED | C.SELECTION_FLAG_AUTOSELECT)
+                .setPreferredTextLanguage(null)  // Clear any preferred language
+                .setSelectUndeterminedTextLanguage(false));  // Don't auto-select any language
+    }
 
+    /**
+     * Disables subtitles without storing the current track (backward compatibility)
+     * 
+     * @param trackSelector The track selector to configure
+     */
     @OptIn(markerClass = UnstableApi.class)
     public static void disableSubtitles(DefaultTrackSelector trackSelector) {
-        trackSelector.setParameters(trackSelector.buildUponParameters().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED));
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED));
+    }
+
+    /**
+     * Stores information about the currently selected subtitle track
+     * 
+     * @param player The ExoPlayer instance to get the current subtitle track from
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    private static void storeCurrentSubtitleTrack(ExoPlayer player) {
+        Tracks tracks = player.getCurrentTracks();
+        int groupIndex = 0;
+        
+        for (Tracks.Group trackGroup : tracks.getGroups()) {
+            if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+                TrackGroup group = trackGroup.getMediaTrackGroup();
+                for (int i = 0; i < group.length; i++) {
+                    if (trackGroup.isTrackSelected(i)) {
+                        lastSelectedSubtitleTrack = group.getFormat(i);
+                        lastSelectedGroupIndex = groupIndex;
+                        lastSelectedTrackIndex = i;
+                        
+                        String trackId = lastSelectedSubtitleTrack.id != null ? 
+                            lastSelectedSubtitleTrack.id : "unknown";
+                        String language = lastSelectedSubtitleTrack.language != null ? 
+                            lastSelectedSubtitleTrack.language : "unknown";
+                            
+                        Log.d(TAG, "Stored subtitle track: " + trackId + 
+                              " (" + language + ") at group " + 
+                              groupIndex + ", track " + i);
+                        return;
+                    }
+                }
+                groupIndex++;
+            }
+        }
+        
+        // If no subtitle track was selected, clear the stored information
+        lastSelectedSubtitleTrack = null;
+        lastSelectedGroupIndex = -1;
+        lastSelectedTrackIndex = -1;
+    }
+
+    /**
+     * Gets the currently selected subtitle track
+     *
+     * @return Format of the active subtitle track, or null if none is active
+     */
+    @OptIn(markerClass = UnstableApi.class)
+    public static Format getCurrentSubtitleTrack(ExoPlayer player) {
+        Tracks tracks = player.getCurrentTracks();
+        for (Tracks.Group trackGroup : tracks.getGroups()) {
+            if (trackGroup.getType() == C.TRACK_TYPE_TEXT && trackGroup.isSelected()) {
+                TrackGroup group = trackGroup.getMediaTrackGroup();
+                for (int i = 0; i < group.length; i++) {
+                    if (trackGroup.isTrackSelected(i)) {
+                        return group.getFormat(i);
+                    }
+                }
+            }
+        }
+        return null;
     }
 }
+
+

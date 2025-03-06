@@ -38,15 +38,11 @@ import androidx.media3.cast.CastPlayer;
 import androidx.media3.cast.SessionAvailabilityListener;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
-import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
-import androidx.media3.common.TrackGroup;
-import androidx.media3.common.TrackSelectionOverride;
-import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
@@ -88,7 +84,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -159,7 +154,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     // Double tap gesture detector
     private GestureDetector gestureDetector;
-    
+
     // Double tap indicators
     private TextView rewindIndicator;
     private TextView forwardIndicator;
@@ -215,11 +210,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
         castImage = fragmentView.findViewById(R.id.cast_image);
         mediaRouteButton = fragmentView.findViewById(R.id.media_route_button);
         closeButton = fragmentView.findViewById(R.id.exo_close);
-        
+
         // Initialize double tap indicators
         rewindIndicator = fragmentView.findViewById(R.id.rewind_indicator);
         forwardIndicator = fragmentView.findViewById(R.id.forward_indicator);
-        
+
         // Initialize the GestureDetector to detect double taps
         gestureDetector = new GestureDetector(fragmentContext, new GestureDetector.SimpleOnGestureListener() {
             @Override
@@ -231,16 +226,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 }
                 return true;
             }
-            
+
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (player == null || player.isCurrentMediaItemLive()) {
                     return false;
                 }
-                
+
                 float screenWidth = playerView.getWidth();
                 float x = e.getX();
-                
+
                 if (x < screenWidth / 2) {
                     // Double tap on left side = rewind 10 seconds
                     long pos = player.getCurrentPosition();
@@ -248,7 +243,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     if (seekTo < 0) seekTo = 0;
                     player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
                     player.seekTo(seekTo);
-                    
+
                     // Show rewind indicator
                     showIndicator(rewindIndicator);
                 } else {
@@ -259,15 +254,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
                     player.setSeekParameters(SeekParameters.NEXT_SYNC);
                     player.seekTo(seekTo);
-                    
+
                     // Show forward indicator
                     showIndicator(forwardIndicator);
                 }
-                
+
                 return true;
             }
         });
-        
+
         // Now that playerView is initialized, we can attach the listener
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
@@ -286,12 +281,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
-        playerView.setShowFastForwardButton(false);
-        playerView.setShowRewindButton(false);
-
-        playerView.setShowSubtitleButton(true);
-
-
+        
         if (isTvDevice) {
             isChromecastEnabled = false;
             displayMode = "landscape";
@@ -319,7 +309,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
 
         playerView.setUseController(true);
-
+        
 
         Log.v(TAG, "isChromecastEnabled: " + isChromecastEnabled);
         if (!isChromecastEnabled) {
@@ -597,9 +587,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             player.release();
             player = null;
             trackSelector = null;
-            if (subtitleManager != null) {
-                subtitleManager.reset();
-            }
+
             if (mediaSession != null) {
                 mediaSession.release();
                 mediaSession = null;
@@ -753,7 +741,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.showController();
 
 
-        this.subtitleManager.updateCustomSubtitleButton();
+        this.subtitleManager.refreshSubtitleButton();
 
         this.subtitleManager.setSubtitleStyle();
 
@@ -806,7 +794,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         TrackUtils.selectTracksOldWay(player, trackSelector, subtitleTrackId, subtitleLocale, audioTrackId, audioLocale, preferredLocale);
                     }
 
-                    subtitleManager.updateCustomSubtitleButton();
+                    subtitleManager.refreshSubtitleButton();
 
                     // We show progress bar, position and duration only when the video is not live
                     if (!player.isCurrentMediaItemLive()) {
@@ -859,7 +847,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             if (playWhenReady) {
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPlay ");
                 NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
-                if(!isTvDevice) {
+                if (!isTvDevice) {
                     resizeButton.setVisibility(View.VISIBLE);
                 }
 
@@ -1186,7 +1174,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                             isCasting = false;
                             final Long videoPosition = castPlayer.getCurrentPosition();
 
-                            if(!isTvDevice) {
+                            if (!isTvDevice) {
                                 resizeButton.setVisibility(View.VISIBLE);
                             }
                             castImage.setVisibility(View.GONE);
@@ -1272,33 +1260,34 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     /**
      * Displays an indicator for 800ms and then hides it.
+     *
      * @param indicator The indicator to display
      */
     private void showIndicator(TextView indicator) {
         // Cancel any ongoing tasks to hide indicators
         indicatorHandler.removeCallbacksAndMessages(null);
-        
+
         // Hide both indicators first
         rewindIndicator.setVisibility(View.GONE);
         forwardIndicator.setVisibility(View.GONE);
-        
+
         // Show the requested indicator
         indicator.setAlpha(1.0f);
         indicator.setVisibility(View.VISIBLE);
-        
+
         // Schedule the indicator to disappear after 800ms
         indicatorHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 indicator.animate()
-                    .alpha(0.0f)
-                    .setDuration(200)
-                    .setListener(new AnimatorListenerAdapter() {
-                        @Override
-                        public void onAnimationEnd(Animator animation) {
-                            indicator.setVisibility(View.GONE);
-                        }
-                    });
+                        .alpha(0.0f)
+                        .setDuration(200)
+                        .setListener(new AnimatorListenerAdapter() {
+                            @Override
+                            public void onAnimationEnd(Animator animation) {
+                                indicator.setVisibility(View.GONE);
+                            }
+                        });
             }
         }, 800);
     }

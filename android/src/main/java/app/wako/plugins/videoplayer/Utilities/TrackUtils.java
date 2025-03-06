@@ -1,7 +1,6 @@
 package app.wako.plugins.videoplayer.Utilities;
 
 import android.content.Context;
-import android.util.Log;
 
 import androidx.annotation.OptIn;
 import androidx.media3.common.C;
@@ -354,6 +353,6 @@ public class TrackUtils {
 
         NotificationCenter.defaultCenter().postNotification("playerTracksChanged", trackInfo);
 
-        subtitleManager.updateCustomSubtitleButton();
+        subtitleManager.refreshSubtitleButton();
     }
 }
