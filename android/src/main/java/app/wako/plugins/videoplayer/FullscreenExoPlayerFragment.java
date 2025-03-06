@@ -12,12 +12,18 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -151,6 +157,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     private boolean isCasting = false;
 
+    // Double tap gesture detector
+    private GestureDetector gestureDetector;
+    
+    // Double tap indicators
+    private TextView rewindIndicator;
+    private TextView forwardIndicator;
+    private Handler indicatorHandler = new Handler(Looper.getMainLooper());
+
     // Tag for the instance state bundle.
     private static final String PLAYBACK_TIME = "play_time";
 
@@ -186,6 +200,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         fragmentContext = container.getContext();
         fragmentView = inflater.inflate(R.layout.fragment_fs_exoplayer, container, false);
 
+        // Initialize views
         controlsContainer = fragmentView.findViewById(R.id.linearLayout);
         playerView = fragmentView.findViewById(R.id.videoViewId);
         TextView titleView = fragmentView.findViewById(R.id.header_tv);
@@ -200,6 +215,67 @@ public class FullscreenExoPlayerFragment extends Fragment {
         castImage = fragmentView.findViewById(R.id.cast_image);
         mediaRouteButton = fragmentView.findViewById(R.id.media_route_button);
         closeButton = fragmentView.findViewById(R.id.exo_close);
+        
+        // Initialize double tap indicators
+        rewindIndicator = fragmentView.findViewById(R.id.rewind_indicator);
+        forwardIndicator = fragmentView.findViewById(R.id.forward_indicator);
+        
+        // Initialize the GestureDetector to detect double taps
+        gestureDetector = new GestureDetector(fragmentContext, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (controllerVisibleFully) {
+                    playerView.hideController();
+                } else {
+                    playerView.showController();
+                }
+                return true;
+            }
+            
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (player == null || player.isCurrentMediaItemLive()) {
+                    return false;
+                }
+                
+                float screenWidth = playerView.getWidth();
+                float x = e.getX();
+                
+                if (x < screenWidth / 2) {
+                    // Double tap on left side = rewind 10 seconds
+                    long pos = player.getCurrentPosition();
+                    long seekTo = pos - 10_000;
+                    if (seekTo < 0) seekTo = 0;
+                    player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
+                    player.seekTo(seekTo);
+                    
+                    // Show rewind indicator
+                    showIndicator(rewindIndicator);
+                } else {
+                    // Double tap on right side = forward 10 seconds
+                    long pos = player.getCurrentPosition();
+                    long seekTo = pos + 10_000;
+                    long seekMax = player.getDuration();
+                    if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
+                    player.setSeekParameters(SeekParameters.NEXT_SYNC);
+                    player.seekTo(seekTo);
+                    
+                    // Show forward indicator
+                    showIndicator(forwardIndicator);
+                }
+                
+                return true;
+            }
+        });
+        
+        // Now that playerView is initialized, we can attach the listener
+        playerView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                gestureDetector.onTouchEvent(event);
+                return true;
+            }
+        });
 
         View controlsBackground = fragmentView.findViewById(R.id.exo_controls_background);
 
@@ -1192,6 +1268,39 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 return false;
             }
         });
+    }
+
+    /**
+     * Displays an indicator for 800ms and then hides it.
+     * @param indicator The indicator to display
+     */
+    private void showIndicator(TextView indicator) {
+        // Cancel any ongoing tasks to hide indicators
+        indicatorHandler.removeCallbacksAndMessages(null);
+        
+        // Hide both indicators first
+        rewindIndicator.setVisibility(View.GONE);
+        forwardIndicator.setVisibility(View.GONE);
+        
+        // Show the requested indicator
+        indicator.setAlpha(1.0f);
+        indicator.setVisibility(View.VISIBLE);
+        
+        // Schedule the indicator to disappear after 800ms
+        indicatorHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                indicator.animate()
+                    .alpha(0.0f)
+                    .setDuration(200)
+                    .setListener(new AnimatorListenerAdapter() {
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
+                            indicator.setVisibility(View.GONE);
+                        }
+                    });
+            }
+        }, 800);
     }
 
 }
