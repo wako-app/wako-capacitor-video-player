@@ -17,7 +17,7 @@ public class VolumeControl {
     public static void adjustVolume(Context context, AudioManager audioManager, ExoPlayer player, boolean increase, boolean canBoost) {
         if (increase) {
             if (isVolumeMax(audioManager) && canBoost) {
-                // Si le volume est déjà au maximum, augmenter le boost
+                // If volume is already at maximum, increase boost
                 if (FullscreenExoPlayerFragment.volumeBoost < MAX_VOLUME_BOOST) {
                     FullscreenExoPlayerFragment.volumeBoost++;
                 }
@@ -27,7 +27,7 @@ public class VolumeControl {
             }
         } else {
             if (FullscreenExoPlayerFragment.volumeBoost > 0) {
-                // Si le boost est actif, d'abord le réduire
+                // If boost is active, first reduce it
                 FullscreenExoPlayerFragment.volumeBoost--;
             } else {
                 // Sinon diminuer le volume normal
@@ -35,9 +35,9 @@ public class VolumeControl {
             }
         }
         
-        // Appliquer le boost si nécessaire
+        // Apply boost if necessary
         if (player != null) {
-            // Le multiplicateur de volume va de 1.0 (pas de boost) à 2.0 (boost max)
+            // Volume multiplier goes from 1.0 (no boost) to 2.0 (max boost)
             float multiplier = 1.0f + (FullscreenExoPlayerFragment.volumeBoost / (float)MAX_VOLUME_BOOST);
             player.setVolume(multiplier);
         }

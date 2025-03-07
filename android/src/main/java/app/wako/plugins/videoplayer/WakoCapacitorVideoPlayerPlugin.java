@@ -783,11 +783,11 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         if (subtitles != null && subtitles.length() > 0) {
             for (int i = 0; i < subtitles.length(); i++) {
                 try {
-                    // Créer un nouvel objet JSObject à partir des données de l'objet JSONObject
+                    // Create a new JSObject from the JSONObject data
                     JSONObject jsonObj = subtitles.getJSONObject(i);
                     JSObject subtitleObj = new JSObject();
 
-                    // Copier les propriétés nécessaires
+                    // Copy the necessary properties
                     if (jsonObj.has("url")) {
                         subtitleObj.put("url", jsonObj.getString("url"));
                     }

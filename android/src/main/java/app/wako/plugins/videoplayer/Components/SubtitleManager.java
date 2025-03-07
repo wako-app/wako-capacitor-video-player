@@ -45,23 +45,23 @@ public class SubtitleManager {
     private static final String TAG = SubtitleManager.class.getName();
 
     /**
-     * Récupère la taille de police par défaut du système
-     * @param context Le contexte de l'application
-     * @return La taille de police en sp (scaled pixels)
+     * Try to get system font size via system settings
+     * @param context The application context
+     * @return The font size in sp (scaled pixels)
      */
     private int getSystemDefaultFontSize(Context context) {
         float scaledDensity = context.getResources().getDisplayMetrics().scaledDensity;
         try {
-            // Essayer de récupérer la taille de police système via les paramètres du système
+            // Base of 14sp multiplied by system font scale
             float systemFontScale = Settings.System.getFloat(
                     context.getContentResolver(),
                     Settings.System.FONT_SCALE, 1.0f);
             
-            // Base de 14sp multipliée par l'échelle de police du système
+            // Base of 14sp multiplied by system font scale
             return Math.round(14 * systemFontScale);
         } catch (Exception e) {
-            Log.e(TAG, "Erreur lors de la récupération de la taille de police système: " + e.getMessage());
-            // Valeur par défaut si échec
+            Log.e(TAG, "Error getting system font size: " + e.getMessage());
+            // Default value if failed
             return 16;
         }
     }
@@ -72,7 +72,7 @@ public class SubtitleManager {
         this.subtitleForegroundColor = subtitleForegroundColor;
         this.subtitleBackgroundColor = subtitleBackgroundColor;
         
-        // Si aucune taille spécifiée, utiliser la taille système par défaut
+        // If no size specified, use default system size
         if (subtitleFontSize == null) {
             this.subtitleFontSize = getSystemDefaultFontSize(fragmentContext);
         } else {

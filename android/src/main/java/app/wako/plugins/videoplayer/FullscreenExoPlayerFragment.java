@@ -309,7 +309,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             layoutParams = getActivity().getWindow().getAttributes();
             mBrightnessControl = new BrightnessControl(getActivity());
             initialBrightness = mBrightnessControl.getScreenBrightness();
-            mBrightnessControl.currentBrightnessLevel = 15; // Niveau de luminosité moyen par défaut
+            mBrightnessControl.currentBrightnessLevel = 15; // Default medium brightness level
         }
         
         // Get AudioManager
@@ -367,15 +367,41 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                // Toujours passer l'événement au gestureDetector en premier pour le double tap
+                // Always pass the event to gestureDetector first for double tap
                 boolean gestureResult = gestureDetector.onTouchEvent(event);
                 
-                // Si le gestureDetector a consommé l'événement (double tap), on ne fait rien d'autre
+                // If the gestureDetector has consumed the event (double tap), do nothing else
                 if (gestureResult) {
                     return true;
                 }
 
-                // Sinon, gérer les autres gestes
+                // Get the height of the view for zone calculations
+                int viewHeight = playerView.getHeight();
+                int viewWidth = playerView.getWidth();
+                
+                // Define exclusion zones (approximation)
+                int topExclusionZoneHeight = viewHeight / 10; // Top 10% for title area
+                int bottomExclusionZoneHeight = viewHeight / 7; // Bottom ~14% for progress bar area
+                
+                // Check if touch is in exclusion zones
+                float y = event.getY();
+                boolean inTopExclusionZone = y < topExclusionZoneHeight;
+                boolean inBottomExclusionZone = y > (viewHeight - bottomExclusionZoneHeight);
+                
+                // Ignore gesture controls in exclusion zones
+                if (inTopExclusionZone || inBottomExclusionZone) {
+                    // Still allow single taps for showing/hiding controls
+                    if (event.getAction() == MotionEvent.ACTION_UP) {
+                        if (controllerVisibleFully) {
+                            playerView.hideController();
+                        } else {
+                            playerView.showController();
+                        }
+                    }
+                    return true;
+                }
+
+                // Handle other gestures
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
                         initialX = event.getX();
@@ -392,17 +418,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         float deltaX = event.getX() - initialX;
                         float deltaY = event.getY() - initialY;
                         
-                        // Déterminer le type de geste (horizontal ou vertical)
+                        // Determine gesture type (horizontal or vertical)
                         if (!isChangingVolume && !isChangingBrightness && !isChangingPosition) {
                             if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaX) > Math.abs(deltaY)) {
-                                // Geste horizontal - recherche
+                                // Gesture horizontal - search
                                 isChangingPosition = true;
                                 if (player != null && player.isPlaying()) {
                                     player.pause();
                                     restorePlayState = true;
                                 }
                             } else if (Math.abs(deltaY) > SWIPE_THRESHOLD) {
-                                // Geste vertical
+                                // Gesture vertical
                                 float screenWidth = playerView.getWidth();
                                 if (initialX < screenWidth / 2) {
                                     // Left side - Brightness
@@ -447,7 +473,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                             player.seekTo(newPosition);
                         }
                         
-                        // Gestion de la luminosité
+                        // Brightness management
                         if (isChangingBrightness && mBrightnessControl != null) {
                             // Calculate brightness adjustment based on vertical movement
                             float brightnessChange = -deltaY / playerView.getHeight(); // Negative because upward increases
@@ -514,7 +540,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
-                        // Masquer les indicateurs après un court délai
+                        // Hide indicators after a short delay
                         if (isChangingBrightness || isChangingVolume || isChangingPosition) {
                             Handler handler = new Handler(Looper.getMainLooper());
                             handler.postDelayed(new Runnable() {
@@ -524,9 +550,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                     if (brightnessIndicator != null) brightnessIndicator.setVisibility(View.GONE);
                                     if (seekIndicator != null) seekIndicator.setVisibility(View.GONE);
                                 }
-                            }, 1000); // Masquer après 1 seconde
+                            }, 1000); // Hide after 1 second
                             
-                            // Restaurer la lecture si elle a été mise en pause pour le seek
+                            // Restore playback if it was paused for seeking
                             if (isChangingPosition && restorePlayState && player != null) {
                                 player.play();
                                 restorePlayState = false;
@@ -534,8 +560,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                             return true;
                         }
                         
-                        // Pour un simple tap (qui n'est pas un geste de volume/luminosité/position),
-                        // ne rien faire ici et laisser le gestureDetector gérer via onSingleTapConfirmed
+                        // For a simple tap (not a volume/brightness/position gesture),
+                        // do nothing here and let the gestureDetector handle it via onSingleTapConfirmed
                         return false;
                 }
                 
@@ -616,7 +642,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 controllerVisible = visibility == View.VISIBLE;
                 controllerVisibleFully = playerView.isControllerFullyVisible();
                 
-                // Ajustons la visibilité des barres système en fonction de la visibilité du contrôleur
+                // Adjust system bars visibility based on controller visibility
                 if (visibility == View.VISIBLE) {
                     showSystemUI();
                 } else {
@@ -782,15 +808,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
             }
         };
         
-        // Ne plus restaurer le volume système initial
-        // Mais garder la restauration de la luminosité
+        // No longer restore initial system volume
+        // But keep brightness restoration
         if (mBrightnessControl != null && getActivity() != null) {
             if (initialIsAutoBrightness) {
-                // Si la luminosité était en auto, restaurer en auto
+                // If brightness was in auto mode, restore to auto
                 mBrightnessControl.setScreenBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
             } else {
-                // Sinon restaurer la valeur exacte
-                mBrightnessControl.setScreenBrightness(initialBrightness);
+                // If player already exists, verify its volume is correct
+                if (player != null) {
+                    float currentPlayerVolume = player.getVolume();
+                    System.out.println("!!!! VIDEO_VOLUME: STATE_ENDED - Volume actuel: " + currentPlayerVolume + 
+                                      ", Volume système: " + (initialSystemVolume / systemMaxVolume));
+                    Log.e(TAG_VOLUME, "STATE_ENDED - Volume actuel: " + currentPlayerVolume + 
+                                             ", Volume système: " + (initialSystemVolume / systemMaxVolume));
+                }
+                
+                // Set volume to system value
+                if (mAudioManager != null) {
+                    float normalizedVolume = initialSystemVolume / systemMaxVolume;
+                    setVolumeLevel(normalizedVolume);
+                }
             }
         }
         
@@ -810,7 +848,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     /**
-     * Formate le temps en millisecondes en chaîne MM:SS
+     * Format time in milliseconds to MM:SS string
      */
     private String formatTime(long timeMs) {
         long totalSeconds = timeMs / 1000;
@@ -921,7 +959,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         if ((Util.SDK_INT < 24 || player == null)) {
             initializePlayer();
         } else {
-            // Si le player existe déjà, vérifier que son volume est correct
+            // If player already exists, verify its volume is correct
             if (mAudioManager != null && player != null) {
                 float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                 float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
@@ -998,7 +1036,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .setBandwidthMeter(bandwidthMeter)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory)).build();
 
-        // Définir le volume immédiatement après création
+        // Set volume immediately after creation
         if (mAudioManager != null) {
             float normalizedVolume = initialSystemVolume / systemMaxVolume;
             setVolumeLevel(normalizedVolume);
@@ -1019,7 +1057,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .build();
         player.setAudioAttributes(audioAttributes, true);
         
-        // Re-définir le volume après avoir défini les attributs audio
+        // Re-set volume after setting audio attributes
         if (mAudioManager != null) {
             float normalizedVolume = initialSystemVolume / systemMaxVolume;
             setVolumeLevel(normalizedVolume);
@@ -1104,13 +1142,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     playerView.setUseController(showControls);
                     controlsContainer.setVisibility(View.INVISIBLE);
                     
-                    // Définir le volume quand le player est prêt
+                    // Set volume when player is ready
                     if (mAudioManager != null) {
                         float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                         float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                         float normalizedVolume = systemVolume / maxVolume;
                         
-                        // Vérifier le volume actuel du player
+                        // Check current player volume
                         if (player != null) {
                             float currentPlayerVolume = player.getVolume();
                             System.out.println("!!!! VIDEO_VOLUME: STATE_READY - Volume actuel: " + currentPlayerVolume + 
@@ -1119,7 +1157,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                              ", Volume système: " + normalizedVolume);
                         }
                         
-                        // Définir le volume à la valeur du système
+                        // Set volume to system value
                         setVolumeLevel(normalizedVolume);
                     }
                     
@@ -1179,7 +1217,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             };
 
             if (playWhenReady) {
-                // S'assurer que le volume est correctement défini quand la lecture démarre
+                // Ensure volume is correctly set when playback starts
                 if (mAudioManager != null) {
                     float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                     float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
@@ -1214,10 +1252,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
          */
         @Override
         public void onTracksChanged(Tracks tracks) {
-            // Restaurer l'appel à TrackUtils
+            // Restore TrackUtils call
             TrackUtils.onTracksChanged(subtitleManager, tracks);
             
-            // Vérifier une dernière fois que le volume est correct
+            // Verify one last time that volume is correct
             if (mAudioManager != null && player != null) {
                 float currentPlayerVolume = player.getVolume();
                 float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -1346,7 +1384,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
      */
     public void play() {
         if (player != null) {
-            // Assurer que le volume est correct au démarrage de la lecture
+            // Ensure volume is correctly set when playback starts
             if (mAudioManager != null) {
                 float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                 float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
@@ -1671,7 +1709,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     private void updateSystemUiVisibility(boolean show) {
-        // Utiliser notre helper pour gérer la visibilité de la barre de statut
+        // Use our helper to manage status bar visibility
         SystemUiHelper.toggleSystemUi(getActivity(), playerView, show);
     }
 
