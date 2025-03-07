@@ -36,6 +36,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.view.ContextThemeWrapper;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.media3.cast.CastPlayer;
@@ -280,6 +281,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
             initialIsAutoBrightness = (initialBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
             isAutoBrightness = initialIsAutoBrightness;
         }
+
+
 
         // Initialize views
         controlsContainer = fragmentView.findViewById(R.id.linearLayout);
@@ -598,7 +601,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
             }
         });
 
-        View controlsBackground = fragmentView.findViewById(R.id.exo_controls_background);
 
         videoProgressBar.setVisibility(View.GONE);
         currentTimeView.setVisibility(View.GONE);
@@ -607,18 +609,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
-        
+
+        ConstraintLayout constraintLayout = fragmentView.findViewById(R.id.exo_constraint_layout);
         if (isTvDevice) {
             isChromecastEnabled = false;
             displayMode = "landscape";
             resizeButton.setVisibility(View.GONE);
 
-            if (controlsBackground != null) {
-                controlsBackground.setBackgroundResource(R.color.black_80);
+            if (constraintLayout != null) {
+                constraintLayout.setBackgroundResource(R.color.black_80);
             }
         } else {
-            if (controlsBackground != null) {
-                controlsBackground.setBackgroundResource(R.color.black_50);
+            if (constraintLayout != null) {
+                constraintLayout.setBackgroundResource(R.color.black_50);
             }
         }
 
@@ -667,12 +670,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 controllerVisible = visibility == View.VISIBLE;
                 controllerVisibleFully = playerView.isControllerFullyVisible();
                 
-                // Adjust system bars visibility based on controller visibility
-                if (visibility == View.VISIBLE) {
-                    showSystemUI();
-                } else {
-                    hideSystemUi();
-                }
+                // // Adjust system bars visibility based on controller visibility
+                // if (visibility == View.VISIBLE) {
+                //     showSystemUI();
+                // } else {
+                //     hideSystemUi();
+                // }
             }
         });
 

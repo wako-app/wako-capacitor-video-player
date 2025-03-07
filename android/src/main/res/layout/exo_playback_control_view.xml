@@ -14,8 +14,10 @@
   xmlns:android="http://schemas.android.com/apk/res/android"
   xmlns:app="http://schemas.android.com/apk/res-auto"
   xmlns:tools="http://schemas.android.com/tools"
+  android:id="@+id/exo_constraint_layout"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
+  android:background="@color/black_80"
   android:fitsSystemWindows="true">
 
   <!-- 0dp dimensions are used to prevent this view from influencing the size of
@@ -24,10 +26,9 @@
        determined. See: https://github.com/google/ExoPlayer/issues/8726.
   -->
   <View
-    android:id="@+id/exo_controls_background"
+    android:id="@id/exo_controls_background"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-      android:background="@color/black_80"
       />
 
   <ImageView
