@@ -42,4 +42,13 @@ public class VolumeControl {
             player.setVolume(multiplier);
         }
     }
+
+    public static void setVolume(Context context, AudioManager audioManager, ExoPlayer player, float volume) {
+        if (audioManager != null && player != null) {
+            int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            int targetVolume = (int)(volume * maxVolume);
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0);
+            player.setVolume(volume);
+        }
+    }
 } 

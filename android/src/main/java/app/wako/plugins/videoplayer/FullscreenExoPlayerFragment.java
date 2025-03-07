@@ -225,6 +225,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public static boolean controllerVisible;
     public static boolean controllerVisibleFully;
 
+    // Variables for volume management
+    private float initialSystemVolume;
+    private float systemMaxVolume;
+    private static final String TAG_VOLUME = "VIDEO_VOLUME"; // More visible tag for logs
+    private boolean shouldRestoreBrightness = true;
+    private int lastSetVolume = -1; // To track the last set volume
+    private static final int MAX_VOLUME = 100; // Maximum volume (100%)
+    private int currentVolumePercent = 50; // Current volume level in percentage
+    
+    // Variables to detect if brightness is in auto mode
+    private boolean isAutoBrightness = false;
+    private boolean initialIsAutoBrightness = false;
+
     /**
      * Creates and configures the fragment view with all necessary UI components.
      * Sets up player controls, event listeners, and initializes video playback.
@@ -237,6 +250,34 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         fragmentContext = container.getContext();
         fragmentView = inflater.inflate(R.layout.fragment_fs_exoplayer, container, false);
+
+        // Initialization of AudioManager and save initial system volume
+        mAudioManager = (AudioManager) fragmentContext.getSystemService(Context.AUDIO_SERVICE);
+        if (mAudioManager != null) {
+            initialSystemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            systemMaxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            
+            // Calculate initial volume percentage (rounded to the lower multiple of 10)
+            float initialVolumeRatio = initialSystemVolume / systemMaxVolume;
+            currentVolumePercent = Math.round(initialVolumeRatio * 100);
+            if (currentVolumePercent <= MAX_VOLUME) {
+                currentVolumePercent = (currentVolumePercent / 10) * 10;
+            }
+            
+            System.out.println("!!!! VIDEO_VOLUME: INITIAL system volume: " + initialSystemVolume + "/" + systemMaxVolume);
+            Log.e(TAG_VOLUME, "INITIAL system volume: " + initialSystemVolume + "/" + systemMaxVolume);
+        }
+        
+        // Initialization of brightness control and save initial brightness
+        if (getActivity() != null) {
+            layoutParams = getActivity().getWindow().getAttributes();
+            mBrightnessControl = new BrightnessControl(getActivity());
+            initialBrightness = mBrightnessControl.getScreenBrightness();
+            
+            // Detect if brightness is in auto mode
+            initialIsAutoBrightness = (initialBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
+            isAutoBrightness = initialIsAutoBrightness;
+        }
 
         // Initialize views
         controlsContainer = fragmentView.findViewById(R.id.linearLayout);
@@ -326,7 +367,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                // Gérer les gestes avec notre détecteur de gestes personnalisé
+                // Toujours passer l'événement au gestureDetector en premier pour le double tap
+                boolean gestureResult = gestureDetector.onTouchEvent(event);
+                
+                // Si le gestureDetector a consommé l'événement (double tap), on ne fait rien d'autre
+                if (gestureResult) {
+                    return true;
+                }
+
+                // Sinon, gérer les autres gestes
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
                         initialX = event.getX();
@@ -356,89 +405,107 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                 // Geste vertical
                                 float screenWidth = playerView.getWidth();
                                 if (initialX < screenWidth / 2) {
-                                    // Côté gauche - Luminosité
+                                    // Left side - Brightness
                                     isChangingBrightness = true;
                                     if (mBrightnessControl != null) {
                                         initialBrightness = mBrightnessControl.getScreenBrightness();
                                     }
                                 } else {
-                                    // Côté droit - Volume
+                                    // Right side - Volume
                                     isChangingVolume = true;
+                                    if (mAudioManager != null) {
+                                        initialVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / systemMaxVolume;
+                                    }
                                 }
                             }
                         }
                         
-                        // Gestion de la recherche (position)
+                        // Handling position seeking
                         if (isChangingPosition && player != null) {
-                            // Calculer la nouvelle position en fonction du déplacement horizontal
+                            // Calculate new position based on horizontal movement
                             float seekFactor = Math.min(Math.max(deltaX / playerView.getWidth(), -1f), 1f);
-                            long seekChange = (long) (totalDuration * seekFactor * 0.1); // 10% du temps total pour un swipe complet
+                            long seekChange = (long) (totalDuration * seekFactor * 0.1); // 10% of total time for a full swipe
                             long newPosition = Math.max(0, Math.min(totalDuration, initialPosition + seekChange));
                             
-                            // Afficher l'indicateur
-                            seekIndicator.setVisibility(View.VISIBLE);
-                            seekIndicator.setText(formatTime(newPosition) + " / " + formatTime(totalDuration));
+                            // Calculate time difference (in milliseconds)
+                            long timeDifference = newPosition - initialPosition;
                             
-                            // Appliquer la recherche
+                            // Display indicator with rounded background
+                            seekIndicator.setVisibility(View.VISIBLE);
+                            seekIndicator.setBackgroundResource(R.drawable.rounded_black_background);
+                            
+                            // Determine prefix (+ or -) based on direction
+                            String prefix = timeDifference >= 0 ? "+" : "-";
+                            
+                            // Format absolute time difference as "00:00"
+                            String formattedDifference = formatTime(Math.abs(timeDifference));
+                            
+                            // Display in "+00:00" or "-00:00" format
+                            seekIndicator.setText(prefix + formattedDifference);
+                            
+                            // Apply seek
                             player.seekTo(newPosition);
                         }
                         
                         // Gestion de la luminosité
                         if (isChangingBrightness && mBrightnessControl != null) {
-                            // Calcul de l'ajustement de la luminosité basé sur le déplacement vertical
-                            float brightnessChange = -deltaY / playerView.getHeight(); // Négatif car vers le haut augmente
+                            // Calculate brightness adjustment based on vertical movement
+                            float brightnessChange = -deltaY / playerView.getHeight(); // Negative because upward increases
                             float newBrightness;
                             
-                            // Si nous sommes près du bas de l'écran et en train de baisser la luminosité
+                            // If we are near the bottom of the screen and lowering brightness
                             if (initialBrightness <= 0.01f && brightnessChange < 0) {
-                                // Passer en mode automatique
+                                // Switch to auto mode
                                 newBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+                                isAutoBrightness = true;
                                 brightnessIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_brightness_auto_24dp), null, null, null);
                                 brightnessIndicator.setText("Auto");
                             } else {
-                                // Sinon, ajuster normalement la luminosité
+                                // Otherwise, adjust brightness normally
+                                isAutoBrightness = false;
                                 newBrightness = Math.min(Math.max(initialBrightness + brightnessChange, 0.01f), 1f);
                                 int brightnessPercentage = (int) (newBrightness * 100);
                                 brightnessIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_brightness_medium_24), null, null, null);
                                 brightnessIndicator.setText(brightnessPercentage + "%");
                             }
                             
-                            // Appliquer la luminosité
+                            // Apply brightness
                             mBrightnessControl.setScreenBrightness(newBrightness);
                             
-                            // Afficher l'indicateur
+                            // Apply rounded background and show indicator
+                            brightnessIndicator.setBackgroundResource(R.drawable.rounded_black_background);
                             brightnessIndicator.setVisibility(View.VISIBLE);
                         }
                         
-                        // Gestion du volume
+                        // Handling volume
                         if (isChangingVolume) {
-                            // Calcul de l'ajustement du volume basé sur le déplacement vertical
-                            float volumeChange = -deltaY / playerView.getHeight(); // Négatif car vers le haut augmente
-                            float newVolume = Math.min(Math.max(initialVolume + volumeChange, 0f), 1f);
+                            // Calculate volume adjustment based on vertical movement with extremely reduced sensitivity
+                            float volumeChange = -deltaY / (playerView.getHeight() * 30.0f); // Reduce sensitivity by 2x more (from 15.0f to 30.0f)
                             
-                            if (player != null) {
-                                player.setVolume(newVolume);
-                            }
+                            // Determine if volume is increasing or decreasing
+                            boolean isIncreasing = volumeChange > 0;
                             
-                            // Afficher l'indicateur de volume avec l'icône appropriée
-                            volumeIndicator.setVisibility(View.VISIBLE);
-                            if (newVolume < 0.01f) {
-                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_off_24dp), null, null, null);
-                                volumeIndicator.setText("0%");
-                            } else {
-                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_up_24dp), null, null, null);
-                                volumeIndicator.setText(Math.round(newVolume * 100) + "%");
-                            }
-                            
-                            // Ajuster le volume système
+                            // Get current system volume for display
                             if (mAudioManager != null) {
-                                int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                                int currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                                float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                                float currentVolumeNormalized = currentVolume / maxVolume;
                                 
-                                if (volumeChange > 0 && currentVolume < maxVolume) {
-                                    VolumeControl.adjustVolume(fragmentContext, mAudioManager, player, true, VolumeControl.isVolumeMax(mAudioManager));
-                                } else if (volumeChange < 0 && currentVolume > 0) {
-                                    VolumeControl.adjustVolume(fragmentContext, mAudioManager, player, false, false);
+                                // Calculate and apply the new volume in steps
+                                setVolumeLevel(currentVolumeNormalized + volumeChange, isIncreasing);
+                                
+                                // Display volume indicator
+                                volumeIndicator.setVisibility(View.VISIBLE);
+                                volumeIndicator.setBackgroundResource(R.drawable.rounded_black_background);
+                                
+                                if (currentVolumePercent == 0) {
+                                    // Volume at 0%
+                                    volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_off_24dp), null, null, null);
+                                    volumeIndicator.setText("0%");
+                                } else {
+                                    // Normal volume
+                                    volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_up_24dp), null, null, null);
+                                    volumeIndicator.setText(currentVolumePercent + "%");
                                 }
                             }
                         }
@@ -464,29 +531,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                 player.play();
                                 restorePlayState = false;
                             }
+                            return true;
                         }
                         
-                        // Passer l'événement au détecteur de gestes pour les autres actions
-                        boolean gestureResult = gestureDetector.onTouchEvent(event);
-                        
-                        // Si le gestureDetector n'a pas consommé l'événement (il retourne false)
-                        // et c'est un simple tap (ACTION_UP), alors afficher/masquer les contrôles
-                        if (!gestureResult && event.getAction() == MotionEvent.ACTION_UP) {
-                            if (!isChangingVolume && !isChangingBrightness && !isChangingPosition) {
-                                if (controllerVisibleFully) {
-                                    playerView.hideController();
-                                } else {
-                                    playerView.showController();
-                                }
-                                return true;
-                            }
-                        }
-                        
-                        return true;
+                        // Pour un simple tap (qui n'est pas un geste de volume/luminosité/position),
+                        // ne rien faire ici et laisser le gestureDetector gérer via onSingleTapConfirmed
+                        return false;
                 }
                 
-                // Passer l'événement au détecteur de gestes pour les autres actions
-                return gestureDetector.onTouchEvent(event);
+                return false;
             }
         });
 
@@ -728,10 +781,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 put("currentTime", getCurrentTime());
             }
         };
-        if (player != null) {
-            player.seekTo(0);
-            player.setVolume(currentVolume);
+        
+        // Ne plus restaurer le volume système initial
+        // Mais garder la restauration de la luminosité
+        if (mBrightnessControl != null && getActivity() != null) {
+            if (initialIsAutoBrightness) {
+                // Si la luminosité était en auto, restaurer en auto
+                mBrightnessControl.setScreenBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
+            } else {
+                // Sinon restaurer la valeur exacte
+                mBrightnessControl.setScreenBrightness(initialBrightness);
+            }
         }
+        
         releasePlayer();
         /* 
     Activity mAct = getActivity();
@@ -804,6 +866,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
         super.onPause();
         if (isChromecastEnabled) castContext.removeCastStateListener(castStateListener);
 
+        // Save the volume and brightness state if the application is paused
+        if (mAudioManager != null) {
+            initialSystemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        }
+        
+        if (mBrightnessControl != null) {
+            initialBrightness = mBrightnessControl.getScreenBrightness();
+        }
+
         if (Util.SDK_INT < 24) {
             if (player != null) player.setPlayWhenReady(false);
             releasePlayer();
@@ -849,6 +920,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
         hideSystemUi();
         if ((Util.SDK_INT < 24 || player == null)) {
             initializePlayer();
+        } else {
+            // Si le player existe déjà, vérifier que son volume est correct
+            if (mAudioManager != null && player != null) {
+                float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                float normalizedVolume = currentVolume / maxVolume;
+                setVolumeLevel(normalizedVolume);
+                System.out.println("!!!! VIDEO_VOLUME: Volume défini dans onResume: " + normalizedVolume);
+                Log.e(TAG_VOLUME, "Volume défini dans onResume: " + normalizedVolume);
+            }
         }
 
         // Ensure PlayerView has focus
@@ -917,6 +998,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .setBandwidthMeter(bandwidthMeter)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(fragmentContext, extractorsFactory)).build();
 
+        // Définir le volume immédiatement après création
+        if (mAudioManager != null) {
+            float normalizedVolume = initialSystemVolume / systemMaxVolume;
+            setVolumeLevel(normalizedVolume);
+        }
+
         if (mediaSession != null) {
             mediaSession.release();
         }
@@ -931,7 +1018,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build();
         player.setAudioAttributes(audioAttributes, true);
-
+        
+        // Re-définir le volume après avoir défini les attributs audio
+        if (mAudioManager != null) {
+            float normalizedVolume = initialSystemVolume / systemMaxVolume;
+            setVolumeLevel(normalizedVolume);
+        }
 
         MediaItem.Builder mediaItemBuilder = new MediaItem.Builder().setUri(videoUri).setMimeType(videoType);
 
@@ -952,9 +1044,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
         player.setMediaItem(mediaItem, initialPosition);
 
         player.prepare();
-
-        player.setPlayWhenReady(true);
-
+        
+        player.setPlayWhenReady(playbackRate != null);
+        
         ImmutableList<Tracks.Group> trackGroups = player.getCurrentTracks().getGroups();
         for (int i = 0; i < trackGroups.size(); i++) {
             Tracks.Group group = trackGroups.get(i);
@@ -1011,14 +1103,32 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     progressBar.setVisibility(View.GONE);
                     playerView.setUseController(showControls);
                     controlsContainer.setVisibility(View.INVISIBLE);
-
+                    
+                    // Définir le volume quand le player est prêt
+                    if (mAudioManager != null) {
+                        float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                        float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                        float normalizedVolume = systemVolume / maxVolume;
+                        
+                        // Vérifier le volume actuel du player
+                        if (player != null) {
+                            float currentPlayerVolume = player.getVolume();
+                            System.out.println("!!!! VIDEO_VOLUME: STATE_READY - Volume actuel: " + currentPlayerVolume + 
+                                              ", Volume système: " + normalizedVolume);
+                            Log.e(TAG_VOLUME, "STATE_READY - Volume actuel: " + currentPlayerVolume + 
+                                             ", Volume système: " + normalizedVolume);
+                        }
+                        
+                        // Définir le volume à la valeur du système
+                        setVolumeLevel(normalizedVolume);
+                    }
+                    
                     if (!firstReadyCalled) {
                         firstReadyCalled = true;
                         NotificationCenter.defaultCenter().postNotification("playerStateReady", info);
-
                         TrackUtils.selectTracksOldWay(player, trackSelector, subtitleTrackId, subtitleLocale, audioTrackId, audioLocale, preferredLocale);
                     }
-
+                    
                     subtitleManager.refreshSubtitleButton();
 
                     // We show progress bar, position and duration only when the video is not live
@@ -1036,9 +1146,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 case ExoPlayer.STATE_ENDED:
                     stateString = "ExoPlayer.STATE_ENDED     -";
                     Log.v(TAG, "**** in ExoPlayer.STATE_ENDED going to notify playerItemEnd ");
-
+                    
                     player.seekTo(0);
-                    player.setVolume(currentVolume);
                     player.setPlayWhenReady(false);
                     if (shouldExitOnEnd) {
                         releasePlayer();
@@ -1070,15 +1179,29 @@ public class FullscreenExoPlayerFragment extends Fragment {
             };
 
             if (playWhenReady) {
+                // S'assurer que le volume est correctement défini quand la lecture démarre
+                if (mAudioManager != null) {
+                    float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    float normalizedVolume = currentVolume / maxVolume;
+                    setVolumeLevel(normalizedVolume);
+                    System.out.println("!!!! VIDEO_VOLUME: Volume défini dans onPlayWhenReadyChanged: " + normalizedVolume);
+                    Log.e(TAG_VOLUME, "Volume défini dans onPlayWhenReadyChanged: " + normalizedVolume);
+                }
+                
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPlay ");
                 NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
                 if (!isTvDevice) {
                     resizeButton.setVisibility(View.VISIBLE);
                 }
-
             } else {
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPause ");
                 NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
+            }
+            
+            int playbackState = player.getPlaybackState();
+            if (playWhenReady && playbackState == Player.STATE_IDLE) {
+                releasePlayer();
             }
         }
 
@@ -1091,7 +1214,22 @@ public class FullscreenExoPlayerFragment extends Fragment {
          */
         @Override
         public void onTracksChanged(Tracks tracks) {
+            // Restaurer l'appel à TrackUtils
             TrackUtils.onTracksChanged(subtitleManager, tracks);
+            
+            // Vérifier une dernière fois que le volume est correct
+            if (mAudioManager != null && player != null) {
+                float currentPlayerVolume = player.getVolume();
+                float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                float normalizedVolume = systemVolume / maxVolume;
+                
+                if (Math.abs(currentPlayerVolume - normalizedVolume) > 0.05f) {
+                    setVolumeLevel(normalizedVolume);
+                    System.out.println("!!!! VIDEO_VOLUME: Volume ajusté dans onTracksChanged: " + normalizedVolume);
+                    Log.e(TAG_VOLUME, "Volume ajusté dans onTracksChanged: " + normalizedVolume);
+                }
+            }
         }
     }
 
@@ -1207,14 +1345,25 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Starts or resumes playback.
      */
     public void play() {
-        PlaybackParameters param = new PlaybackParameters(playbackRate);
-        player.setPlaybackParameters(param);
+        if (player != null) {
+            // Assurer que le volume est correct au démarrage de la lecture
+            if (mAudioManager != null) {
+                float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                float normalizedVolume = currentVolume / maxVolume;
+                setVolumeLevel(normalizedVolume);
+                System.out.println("!!!! VIDEO_VOLUME: Volume défini dans play(): " + normalizedVolume);
+                Log.e(TAG_VOLUME, "Volume défini dans play(): " + normalizedVolume);
+            }
+            
+            PlaybackParameters param = new PlaybackParameters(playbackRate);
+            player.setPlaybackParameters(param);
 
-        /* If the user start the cast before the player is ready and playing, then the video will start
-          in the device and chromecast at the same time. This is to avoid that behaviour.*/
-        if (!isCasting) {
-            player.setPlayWhenReady(true);
-
+            /* If the user start the cast before the player is ready and playing, then the video will start
+              in the device and chromecast at the same time. This is to avoid that behaviour.*/
+            if (!isCasting) {
+                player.setPlayWhenReady(true);
+            }
         }
     }
 
@@ -1260,17 +1409,21 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * @return Volume level between 0.0 and 1.0
      */
     public float getVolume() {
-        return player.getVolume();
+        if (mAudioManager != null) {
+            int currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            return (float) currentVolume / maxVolume;
+        }
+        return 0.5f;
     }
 
     /**
-     * Sets the volume level.
+     * Sets the volume level for the player.
      *
-     * @param _volume Volume level between 0.0 and 1.0
+     * @param _volume Volume level (0.0 to 1.0)
      */
     public void setVolume(float _volume) {
-        float volume = Math.min(Math.max(0, _volume), 1L);
-        player.setVolume(volume);
+        setVolumeLevel(_volume);
     }
 
     /**
@@ -1520,6 +1673,65 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private void updateSystemUiVisibility(boolean show) {
         // Utiliser notre helper pour gérer la visibilité de la barre de statut
         SystemUiHelper.toggleSystemUi(getActivity(), playerView, show);
+    }
+
+    /**
+     * Utility method to set the volume level for both player and system audio
+     * @param volumeLevel volume level between 0 and 1.0 (100%)
+     * @param isIncreasing indicates if the volume is increasing (true) or decreasing (false)
+     */
+    private void setVolumeLevel(float volumeLevel, boolean isIncreasing) {
+        if (mAudioManager == null) return;
+        
+        // Ensure volume is between 0 and 1.0 (100%)
+        volumeLevel = Math.max(0f, Math.min(1.0f, volumeLevel));
+        
+        // Convert volume to percentage (0-100)
+        int targetVolumePercent = Math.round(volumeLevel * 100);
+        
+        // Limit rate of change - adjust only by 1% at a time
+        if (isIncreasing) {
+            // If increasing, go up by 1%
+            targetVolumePercent = Math.min(currentVolumePercent + 1, MAX_VOLUME);
+        } else {
+            // If decreasing, go down by 1%
+            targetVolumePercent = Math.max(0, currentVolumePercent - 1);
+        }
+        
+        // Store current value for future calls
+        currentVolumePercent = targetVolumePercent;
+        
+        // Recalculate normalized value
+        float normalizedVolume = targetVolumePercent / 100f;
+        
+        // Calculate system volume based on volumeLevel
+        int maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int targetVolume = Math.round(normalizedVolume * maxVolume);
+        
+        // Avoid setting the same volume multiple times
+        if (lastSetVolume == targetVolume) {
+            return;
+        }
+        
+        // Set system volume
+        mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0);
+        lastSetVolume = targetVolume;
+        
+        // Also set player volume
+        if (player != null) {
+            player.setVolume(normalizedVolume);
+        }
+        
+        System.out.println("!!!! VIDEO_VOLUME: Volume set to " + targetVolumePercent + "% (" + targetVolume + "/" + maxVolume + ")");
+        Log.e(TAG_VOLUME, "Volume set to " + targetVolumePercent + "% (" + targetVolume + "/" + maxVolume + ")");
+    }
+    
+    /**
+     * Overload of setVolumeLevel without specifying direction
+     */
+    private void setVolumeLevel(float volumeLevel) {
+        // By default, consider it as an increase
+        setVolumeLevel(volumeLevel, volumeLevel > (currentVolumePercent / 100f));
     }
 
 }
