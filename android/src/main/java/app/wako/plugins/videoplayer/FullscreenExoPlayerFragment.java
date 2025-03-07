@@ -1,9 +1,12 @@
 package app.wako.plugins.videoplayer;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -15,6 +18,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
@@ -23,8 +27,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -32,6 +34,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
@@ -56,15 +59,16 @@ import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
-import androidx.media3.exoplayer.trackselection.MappingTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.extractor.ts.TsExtractor;
 import androidx.media3.session.MediaSession;
 import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.SubtitleView;
 import androidx.mediarouter.app.MediaRouteButton;
 import androidx.mediarouter.media.MediaControlIntent;
 import androidx.mediarouter.media.MediaRouteSelector;
@@ -73,16 +77,12 @@ import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
-import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
-import com.google.android.gms.cast.framework.SessionManager;
-import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -90,23 +90,20 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.Locale;
 
 import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Components.SubtitleManager;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
-import app.wako.plugins.videoplayer.Utilities.HelperUtils;
-import app.wako.plugins.videoplayer.Utilities.TrackUtils;
 import app.wako.plugins.videoplayer.Utilities.BrightnessControl;
-import app.wako.plugins.videoplayer.Utilities.VolumeControl;
+import app.wako.plugins.videoplayer.Utilities.HelperUtils;
 import app.wako.plugins.videoplayer.Utilities.SystemUiHelper;
+import app.wako.plugins.videoplayer.Utilities.TrackUtils;
+import app.wako.plugins.videoplayer.Utilities.SubtitlesUtils;
 
 /**
  * Fragment that handles full-screen video playback using ExoPlayer.
@@ -240,6 +237,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
     // Variables to detect if brightness is in auto mode
     private boolean isAutoBrightness = false;
     private boolean initialIsAutoBrightness = false;
+
+    private float subtitlesScale = 1.0f;  // Add this variable at class level
 
     /**
      * Creates and configures the fragment view with all necessary UI components.
@@ -844,10 +843,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 // If player already exists, verify its volume is correct
                 if (player != null) {
                     float currentPlayerVolume = player.getVolume();
-                    System.out.println("!!!! VIDEO_VOLUME: STATE_ENDED - Volume actuel: " + currentPlayerVolume + 
-                                      ", Volume système: " + (initialSystemVolume / systemMaxVolume));
-                    Log.e(TAG_VOLUME, "STATE_ENDED - Volume actuel: " + currentPlayerVolume + 
-                                             ", Volume système: " + (initialSystemVolume / systemMaxVolume));
+                    System.out.println("!!!! VIDEO_VOLUME: STATE_ENDED - Current volume: " + currentPlayerVolume + 
+                                      ", System volume: " + (initialSystemVolume / systemMaxVolume));
+                    Log.e(TAG_VOLUME, "STATE_ENDED - Current volume: " + currentPlayerVolume + 
+                                             ", System volume: " + (initialSystemVolume / systemMaxVolume));
                 }
                 
                 // Set volume to system value
@@ -991,8 +990,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 float normalizedVolume = currentVolume / maxVolume;
                 setVolumeLevel(normalizedVolume);
-                System.out.println("!!!! VIDEO_VOLUME: Volume défini dans onResume: " + normalizedVolume);
-                Log.e(TAG_VOLUME, "Volume défini dans onResume: " + normalizedVolume);
+                System.out.println("!!!! VIDEO_VOLUME: Volume set in onResume: " + normalizedVolume);
+                Log.e(TAG_VOLUME, "Volume set in onResume: " + normalizedVolume);
             }
         }
 
@@ -1177,10 +1176,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         // Check current player volume
                         if (player != null) {
                             float currentPlayerVolume = player.getVolume();
-                            System.out.println("!!!! VIDEO_VOLUME: STATE_READY - Volume actuel: " + currentPlayerVolume + 
-                                              ", Volume système: " + normalizedVolume);
-                            Log.e(TAG_VOLUME, "STATE_READY - Volume actuel: " + currentPlayerVolume + 
-                                             ", Volume système: " + normalizedVolume);
+                            System.out.println("!!!! VIDEO_VOLUME: STATE_READY - Current volume: " + currentPlayerVolume + 
+                                              ", System volume: " + normalizedVolume);
+                            Log.e(TAG_VOLUME, "STATE_READY - Current volume: " + currentPlayerVolume + 
+                                             ", System volume: " + normalizedVolume);
                         }
                         
                         // Set volume to system value
@@ -1249,8 +1248,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                     float normalizedVolume = currentVolume / maxVolume;
                     setVolumeLevel(normalizedVolume);
-                    System.out.println("!!!! VIDEO_VOLUME: Volume défini dans onPlayWhenReadyChanged: " + normalizedVolume);
-                    Log.e(TAG_VOLUME, "Volume défini dans onPlayWhenReadyChanged: " + normalizedVolume);
+                    System.out.println("!!!! VIDEO_VOLUME: Volume set in onPlayWhenReadyChanged: " + normalizedVolume);
+                    Log.e(TAG_VOLUME, "Volume set in onPlayWhenReadyChanged: " + normalizedVolume);
                 }
                 
                 Log.v(TAG, "**** in onPlayWhenReadyChanged going to notify playerItemPlay ");
@@ -1290,8 +1289,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 
                 if (Math.abs(currentPlayerVolume - normalizedVolume) > 0.05f) {
                     setVolumeLevel(normalizedVolume);
-                    System.out.println("!!!! VIDEO_VOLUME: Volume ajusté dans onTracksChanged: " + normalizedVolume);
-                    Log.e(TAG_VOLUME, "Volume ajusté dans onTracksChanged: " + normalizedVolume);
+                    System.out.println("!!!! VIDEO_VOLUME: Volume adjusted in onTracksChanged: " + normalizedVolume);
+                    Log.e(TAG_VOLUME, "Volume adjusted in onTracksChanged: " + normalizedVolume);
                 }
             }
         }
@@ -1416,8 +1415,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 float normalizedVolume = currentVolume / maxVolume;
                 setVolumeLevel(normalizedVolume);
-                System.out.println("!!!! VIDEO_VOLUME: Volume défini dans play(): " + normalizedVolume);
-                Log.e(TAG_VOLUME, "Volume défini dans play(): " + normalizedVolume);
+                System.out.println("!!!! VIDEO_VOLUME: Volume set in play(): " + normalizedVolume);
+                Log.e(TAG_VOLUME, "Volume set in play(): " + normalizedVolume);
             }
             
             PlaybackParameters param = new PlaybackParameters(playbackRate);
@@ -1796,6 +1795,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private void setVolumeLevel(float volumeLevel) {
         // By default, consider it as an increase
         setVolumeLevel(volumeLevel, volumeLevel > (currentVolumePercent / 100f));
+    }
+
+    private void setSubtitleTextSize() {
+        SubtitlesUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, getResources().getConfiguration().orientation);
+    }
+
+    private void setSubtitleTextSize(final int orientation) {
+        SubtitlesUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, orientation);
+    }
+
+    private void updateSubtitleStyle() {
+        SubtitlesUtils.updateSubtitleStyle(playerView, subTitleOptions, isTvDevice, subtitlesScale, getResources().getConfiguration().orientation);
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Force subtitle size update
+        setSubtitleTextSize(newConfig.orientation);
+        // Force style update which will also reapply the size
+        updateSubtitleStyle();
     }
 
 }
