@@ -56,7 +56,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
     private Float videoRate = 1f;
     private String title;
     private String smallTitle;
-    private String accentColor;
     private Boolean chromecast = true;
     private String artwork;
     private String url;
@@ -175,11 +174,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             _smallTitle = call.getString("smallTitle");
         }
         smallTitle = _smallTitle;
-        String _accentColor = "";
-        if (call.getData().has("accentColor")) {
-            _accentColor = call.getString("accentColor");
-        }
-        accentColor = _accentColor;
         Boolean _chromecast = true;
         if (call.getData().has("chromecast")) {
             _chromecast = call.getBoolean("chromecast");
@@ -225,7 +219,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         Log.v(TAG, "headers: " + headers);
         Log.v(TAG, "title: " + title);
         Log.v(TAG, "smallTitle: " + smallTitle);
-        Log.v(TAG, "accentColor: " + accentColor);
         Log.v(TAG, "chromecast: " + chromecast);
         Log.v(TAG, "artwork: " + artwork);
 
@@ -825,7 +818,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                         subTitleOptions,
                         title,
                         smallTitle,
-                        accentColor,
                         chromecast,
                         artwork,
                         isTV,

@@ -128,7 +128,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public String displayMode = "all";
     public String videoTitle;
     public String videoSubtitle;
-    public String themeColor;
     public Boolean isChromecastEnabled;
     public String posterUrl;    // Track selection fields
     public String subtitleTrackId;
@@ -186,9 +185,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private boolean restorePlayState = false;
     private long initialPosition;
     private long totalDuration;
+    private long lastMoveTime;
+    private float lastX;
+    private float lastMoveSpeed;
+    private long accumulatedSeekMs = 0;
     
     // Thresholds for gesture detection
-    private static final float SWIPE_THRESHOLD = 20f;
+    private static final float SWIPE_THRESHOLD = 60f;
     private static final float SWIPE_VELOCITY_THRESHOLD = 150f;
     
     // Indicators for brightness, volume and seeking
@@ -406,6 +409,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     case MotionEvent.ACTION_DOWN:
                         initialX = event.getX();
                         initialY = event.getY();
+                        lastX = initialX;
+                        lastMoveTime = System.currentTimeMillis();
+                        lastMoveSpeed = 0;
+                        accumulatedSeekMs = 0;
                         initialPosition = player != null ? player.getCurrentPosition() : 0;
                         totalDuration = player != null ? player.getDuration() : 0;
                         initialVolume = player != null ? player.getVolume() : 0.5f;
@@ -448,13 +455,36 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                         // Handling position seeking
                         if (isChangingPosition && player != null) {
-                            // Calculate new position based on horizontal movement
-                            float seekFactor = Math.min(Math.max(deltaX / playerView.getWidth(), -1f), 1f);
-                            long seekChange = (long) (totalDuration * seekFactor * 0.1); // 10% of total time for a full swipe
-                            long newPosition = Math.max(0, Math.min(totalDuration, initialPosition + seekChange));
+                            // Calculate movement speed (pixels per millisecond)
+                            long currentTime = System.currentTimeMillis();
+                            long timeDelta = currentTime - lastMoveTime;
+                            float distance = event.getX() - lastX;
                             
-                            // Calculate time difference (in milliseconds)
+                            if (timeDelta > 0) {
+                                lastMoveSpeed = Math.abs(distance) / timeDelta;
+                            }
+                            
+                            // Base seek amount for this movement (3000ms per 10% of screen width)
+                            float baseSeekAmount = (Math.abs(distance) / playerView.getWidth()) * 30000;
+                            
+                            // Speed multiplier: 1.0 for normal speed, up to 6.0 for very fast swipes
+                            float speedMultiplier = Math.min(1 + (lastMoveSpeed * 3), 6.0f);
+                            
+                            // Calculate seek change for this movement
+                            long seekChangeForThisMove = (long) (baseSeekAmount * speedMultiplier);
+                            
+                            // Add or subtract from accumulated seek based on direction
+                            accumulatedSeekMs += distance > 0 ? seekChangeForThisMove : -seekChangeForThisMove;
+                            
+                            // Calculate new position based on initial position and accumulated seek
+                            long newPosition = Math.max(0, Math.min(totalDuration, initialPosition + accumulatedSeekMs));
+                            
+                            // Calculate time difference from initial position
                             long timeDifference = newPosition - initialPosition;
+                            
+                            // Update tracking variables
+                            lastX = event.getX();
+                            lastMoveTime = currentTime;
                             
                             // Display indicator with rounded background
                             seekIndicator.setVisibility(View.VISIBLE);
@@ -475,8 +505,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                         // Brightness management
                         if (isChangingBrightness && mBrightnessControl != null) {
-                            // Calculate brightness adjustment based on vertical movement
-                            float brightnessChange = -deltaY / playerView.getHeight(); // Negative because upward increases
+                            // Calculate brightness adjustment based on vertical movement with reduced sensitivity
+                            float brightnessChange = -deltaY / (playerView.getHeight() * 30.0f); // Reduced sensitivity
                             float newBrightness;
                             
                             // If we are near the bottom of the screen and lowering brightness
@@ -506,7 +536,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         // Handling volume
                         if (isChangingVolume) {
                             // Calculate volume adjustment based on vertical movement with extremely reduced sensitivity
-                            float volumeChange = -deltaY / (playerView.getHeight() * 30.0f); // Reduce sensitivity by 2x more (from 15.0f to 30.0f)
+                            float volumeChange = -deltaY / (playerView.getHeight() * 50.0f); // Reduced sensitivity even more
                             
                             // Determine if volume is increasing or decreasing
                             boolean isIncreasing = volumeChange > 0;
@@ -623,11 +653,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         if (!Objects.equals(videoSubtitle, "")) {
             subtitleView.setText(videoSubtitle);
         }
-        if (!Objects.equals(themeColor, "")) {
-            progressBar.getIndeterminateDrawable().setColorFilter(Color.parseColor(themeColor), android.graphics.PorterDuff.Mode.MULTIPLY);
-            videoProgressBar.setPlayedColor(Color.parseColor(themeColor));
-            videoProgressBar.setScrubberColor(Color.parseColor(themeColor));
-        }
+
 
         playerView.requestFocus();
 

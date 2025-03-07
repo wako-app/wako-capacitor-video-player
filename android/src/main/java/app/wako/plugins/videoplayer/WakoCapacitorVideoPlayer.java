@@ -32,7 +32,6 @@ public class WakoCapacitorVideoPlayer {
         JSObject subTitleOptions,
         String title,
         String smallTitle,
-        String accentColor,
         Boolean chromecast,
         String artwork,
         Boolean isTV,
@@ -55,7 +54,6 @@ public class WakoCapacitorVideoPlayer {
         fsFragment.subTitleOptions = subTitleOptions;
         fsFragment.videoTitle = title;
         fsFragment.videoSubtitle = smallTitle;
-        fsFragment.themeColor = accentColor;
         fsFragment.isChromecastEnabled = chromecast;
         fsFragment.posterUrl = artwork;
         fsFragment.isTvDevice = isTV;
