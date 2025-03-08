@@ -10,7 +10,6 @@ import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -18,7 +17,6 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
@@ -66,10 +64,8 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.extractor.ts.TsExtractor;
 import androidx.media3.session.MediaSession;
 import androidx.media3.ui.AspectRatioFrameLayout;
-import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
-import androidx.media3.ui.SubtitleView;
 import androidx.mediarouter.app.MediaRouteButton;
 import androidx.mediarouter.media.MediaControlIntent;
 import androidx.mediarouter.media.MediaRouteSelector;
@@ -78,8 +74,10 @@ import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
+import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
+import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
@@ -102,9 +100,9 @@ import app.wako.plugins.videoplayer.Components.SubtitleManager;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
 import app.wako.plugins.videoplayer.Utilities.BrightnessControl;
 import app.wako.plugins.videoplayer.Utilities.HelperUtils;
+import app.wako.plugins.videoplayer.Utilities.SubtitleUtils;
 import app.wako.plugins.videoplayer.Utilities.SystemUiHelper;
 import app.wako.plugins.videoplayer.Utilities.TrackUtils;
-import app.wako.plugins.videoplayer.Utilities.SubtitlesUtils;
 
 /**
  * Fragment that handles full-screen video playback using ExoPlayer.
@@ -801,6 +799,25 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Exits the player or transitions to picture-in-picture mode based on configuration.
      */
     private void backPressed() {
+        // If we are casting, stop the cast before exiting
+        if (isCasting && castPlayer != null) {
+            try {
+                // Save current position to resume later if needed
+                Long currentPosition = castPlayer.getCurrentPosition();
+                
+                // Stop the cast (this will trigger onCastSessionUnavailable)
+                CastContext.getSharedInstance().getSessionManager().endCurrentSession(true);
+                
+                // If exiting video during casting, we may want to 
+                // save position for future playback
+                if (player != null) {
+                    player.seekTo(currentPosition);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error ending cast session", e);
+            }
+        }
+        
         playerExit();
     }
 
@@ -918,7 +935,36 @@ public class FullscreenExoPlayerFragment extends Fragment {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (isChromecastEnabled) mediaRouter.removeCallback(mediaRouterCallback);
+        
+        // Clean up casting resources
+        if (isChromecastEnabled) {
+            // Remove callbacks
+            if (mediaRouter != null) {
+                mediaRouter.removeCallback(mediaRouterCallback);
+            }
+            
+            // Release CastPlayer
+            if (castPlayer != null) {
+                try {
+                    castPlayer.setSessionAvailabilityListener(null);
+                    castPlayer.removeListener(playerListener);
+                    castPlayer.release();
+                    castPlayer = null;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error releasing CastPlayer", e);
+                }
+            }
+            
+            // Remove CastContext listeners
+            if (castContext != null && castStateListener != null) {
+                try {
+                    castContext.removeCastStateListener(castStateListener);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error removing cast state listener", e);
+                }
+            }
+        }
+        
         releasePlayer();
         NotificationCenter.defaultCenter().removeAllNotifications();
     }
@@ -965,7 +1011,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
             }
 
             videoType = null;
-            playerView = null;
             videoUri = null;
             subtitles.clear();
             isMuted = false;
@@ -1032,10 +1077,31 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Prepares the player for playback with the specified video and subtitle content.
      */
     private void initializePlayer() {
+        // Check if there is an active casting session and stop it
+        if (isChromecastEnabled) {
+            try {
+                CastContext castCtx = CastContext.getSharedInstance();
+                SessionManager sessionManager = castCtx.getSessionManager();
+                if (sessionManager.getCurrentCastSession() != null) {
+                    Log.d(TAG, "Detected active cast session, ending it for new video");
+                    // Stop current session so new video takes over
+                    sessionManager.endCurrentSession(true);
+                    // Wait a short moment to ensure the session is ended
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        Log.e(TAG, "Sleep interrupted", e);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking/ending cast session", e);
+            }
+        }
+
         if (player != null) {
             releasePlayer();
         }
-
+        
         // Save the requested initial position
         long initialPosition = startAtSec > 0 ? startAtSec * 1000 : 0;
         Log.d(TAG, "Requested initial position: " + initialPosition + "ms (startAtSec=" + startAtSec + ")");
@@ -1562,6 +1628,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Sets up the CastContext and prepares for casting sessions.
      */
     private void initializeCastService() {
+        if (fragmentContext == null) {
+            Log.e(TAG, "Cannot initialize cast service: fragmentContext is null");
+            return;
+        }
+        
         Executor executor = Executors.newSingleThreadExecutor();
         Task<CastContext> task = CastContext.getSharedInstance(fragmentContext, executor);
 
@@ -1569,99 +1640,200 @@ public class FullscreenExoPlayerFragment extends Fragment {
             @Override
             public void onComplete(Task<CastContext> task) {
                 if (task.isSuccessful()) {
-                    castContext = task.getResult();
-                    castPlayer = new CastPlayer(castContext);
-                    mediaRouter = MediaRouter.getInstance(fragmentContext);
-                    mSelector = new MediaRouteSelector.Builder().addControlCategories(Arrays.asList(MediaControlIntent.CATEGORY_LIVE_AUDIO, MediaControlIntent.CATEGORY_LIVE_VIDEO)).build();
+                    try {
+                        castContext = task.getResult();
+                        castPlayer = new CastPlayer(castContext);
+                        mediaRouter = MediaRouter.getInstance(fragmentContext);
+                        mSelector = new MediaRouteSelector.Builder()
+                            .addControlCategories(Arrays.asList(
+                                MediaControlIntent.CATEGORY_LIVE_AUDIO, 
+                                MediaControlIntent.CATEGORY_LIVE_VIDEO))
+                            .build();
 
-                    mediaRouteButtonColorWhite(mediaRouteButton);
-                    if (castContext != null && castContext.getCastState() != CastState.NO_DEVICES_AVAILABLE)
-                        mediaRouteButton.setVisibility(View.VISIBLE);
-
-                    castStateListener = state -> {
-                        if (state == CastState.NO_DEVICES_AVAILABLE) {
-                            mediaRouteButton.setVisibility(View.GONE);
-                        } else {
-                            if (mediaRouteButton.getVisibility() == View.GONE) {
+                        // Check if mediaRouteButton is still valid (fragment not destroyed)
+                        if (mediaRouteButton != null) {
+                            mediaRouteButtonColorWhite(mediaRouteButton);
+                            
+                            if (castContext != null && castContext.getCastState() != CastState.NO_DEVICES_AVAILABLE)
                                 mediaRouteButton.setVisibility(View.VISIBLE);
+
+                            CastButtonFactory.setUpMediaRouteButton(fragmentContext, mediaRouteButton);
+                        } else {
+                            Log.w(TAG, "mediaRouteButton is null, cannot set up cast button");
+                        }
+
+                        castStateListener = state -> {
+                            if (mediaRouteButton == null) {
+                                Log.w(TAG, "mediaRouteButton is null in castStateListener");
+                                return;
                             }
-                        }
-                    };
-                    CastButtonFactory.setUpMediaRouteButton(fragmentContext, mediaRouteButton);
-
-                    MediaMetadata movieMetadata;
-                    if (posterUrl != "") {
-                        movieMetadata = new MediaMetadata.Builder().setTitle(videoTitle).setSubtitle(videoSubtitle).setMediaType(MediaMetadata.MEDIA_TYPE_MOVIE).setArtworkUri(Uri.parse(posterUrl)).build();
-                        new setCastImage().execute();
-                    } else {
-                        movieMetadata = new MediaMetadata.Builder().setTitle(videoTitle).setSubtitle(videoSubtitle).build();
-                    }
-                    mediaItem = new MediaItem.Builder().setUri(videoUrl).setMimeType(MimeTypes.VIDEO_UNKNOWN).setMediaMetadata(movieMetadata).build();
-
-                    castPlayer.setSessionAvailabilityListener(new SessionAvailabilityListener() {
-                        @Override
-                        public void onCastSessionAvailable() {
-                            isCasting = true;
-                            final Long videoPosition = player.getCurrentPosition();
-
-                            resizeButton.setVisibility(View.GONE);
-                            player.setPlayWhenReady(false);
-                            castImage.setVisibility(View.VISIBLE);
-                            castPlayer.setMediaItem(mediaItem, videoPosition);
-                            playerView.setPlayer(castPlayer);
-                            playerView.setControllerShowTimeoutMs(0);
-                            playerView.setControllerHideOnTouch(false);
-                            //We perform a click because for some weird reason, the layout is black until the user clicks on it
-                            playerView.performClick();
-                        }
-
-                        @Override
-                        public void onCastSessionUnavailable() {
-                            isCasting = false;
-                            final Long videoPosition = castPlayer.getCurrentPosition();
-
-                            if (!isTvDevice) {
-                                resizeButton.setVisibility(View.VISIBLE);
-                            }
-                            castImage.setVisibility(View.GONE);
-                            playerView.setPlayer(player);
-                            player.setPlayWhenReady(true);
-                            player.seekTo(videoPosition);
-                            playerView.setControllerShowTimeoutMs(3000);
-                            playerView.setControllerHideOnTouch(true);
-                        }
-                    });
-
-                    castPlayer.addListener(new Player.Listener() {
-                        @Override
-                        public void onPlayerStateChanged(boolean playWhenReady, int state) {
-                            Map<String, Object> info = new HashMap<String, Object>() {
-                                {
-                                    put("currentTime", String.valueOf(player.getCurrentPosition() / 1000));
+                            
+                            if (state == CastState.NO_DEVICES_AVAILABLE) {
+                                mediaRouteButton.setVisibility(View.GONE);
+                            } else {
+                                if (mediaRouteButton.getVisibility() == View.GONE) {
+                                    mediaRouteButton.setVisibility(View.VISIBLE);
                                 }
-                            };
-                            switch (state) {
-                                case CastPlayer.STATE_READY:
-                                    if (castPlayer.isPlaying()) {
-                                        NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
-                                    } else {
-                                        NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
-                                    }
-                                    break;
-                                default:
-                                    break;
                             }
-                        }
-                    });
+                        };
 
-                    castContext.addCastStateListener(castStateListener);
-                    mediaRouter.addCallback(mSelector, mediaRouterCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
+                        // Prepare metadata for casting
+                        MediaMetadata movieMetadata;
+                        if (posterUrl != null && !posterUrl.isEmpty()) {
+                            movieMetadata = new MediaMetadata.Builder()
+                                .setTitle(videoTitle != null ? videoTitle : "")
+                                .setSubtitle(videoSubtitle != null ? videoSubtitle : "")
+                                .setMediaType(MediaMetadata.MEDIA_TYPE_MOVIE)
+                                .setArtworkUri(Uri.parse(posterUrl))
+                                .build();
+                            new setCastImage().execute();
+                        } else {
+                            movieMetadata = new MediaMetadata.Builder()
+                                .setTitle(videoTitle != null ? videoTitle : "")
+                                .setSubtitle(videoSubtitle != null ? videoSubtitle : "")
+                                .build();
+                        }
+                        
+                        // Check if video URL is valid
+                        if (videoUrl != null && !videoUrl.isEmpty()) {
+                            mediaItem = new MediaItem.Builder()
+                                .setUri(videoUrl)
+                                .setMimeType(MimeTypes.VIDEO_UNKNOWN)
+                                .setMediaMetadata(movieMetadata)
+                                .build();
+                        } else {
+                            Log.e(TAG, "Cannot create mediaItem: videoUrl is null or empty");
+                        }
+
+                        // Set up session listeners
+                        setupCastSessionListeners();
+                        
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error initializing cast service", e);
+                    }
                 } else {
                     Exception e = task.getException();
-                    e.printStackTrace();
+                    Log.e(TAG, "Failed to get CastContext", e);
                 }
             }
         });
+    }
+    
+    /**
+     * Sets up listeners for cast session events
+     */
+    private void setupCastSessionListeners() {
+        if (castPlayer == null) {
+            Log.e(TAG, "Cannot setup cast session listeners: castPlayer is null");
+            return;
+        }
+        
+        castPlayer.setSessionAvailabilityListener(new SessionAvailabilityListener() {
+            @Override
+            public void onCastSessionAvailable() {
+                isCasting = true;
+                
+                // Check if playerView is still valid
+                if (playerView == null) {
+                    Log.e(TAG, "onCastSessionAvailable: playerView is null, fragment might have been destroyed");
+                    return;
+                }
+                
+                // Check if player is valid
+                if (player == null) {
+                    Log.e(TAG, "onCastSessionAvailable: player is null");
+                    return;
+                }
+                
+                final Long videoPosition = player.getCurrentPosition();
+
+                // Hide resize button during casting
+                if (resizeButton != null) {
+                    resizeButton.setVisibility(View.GONE);
+                }
+                
+                player.setPlayWhenReady(false);
+                
+                // Show casting indicator
+                if (castImage != null) {
+                    castImage.setVisibility(View.VISIBLE);
+                }
+                
+                // Configure castPlayer and switch PlayerView
+                if (mediaItem != null) {
+                    castPlayer.setMediaItem(mediaItem, videoPosition);
+                    playerView.setPlayer(castPlayer);
+                    playerView.setControllerShowTimeoutMs(0);
+                    playerView.setControllerHideOnTouch(false);
+                    playerView.performClick();
+                } else {
+                    Log.e(TAG, "Cannot set media item: mediaItem is null");
+                }
+            }
+
+            @Override
+            public void onCastSessionUnavailable() {
+                isCasting = false;
+                
+                // Check if castPlayer is still valid
+                Long videoPosition = 0L;
+                if (castPlayer != null) {
+                    try {
+                        videoPosition = castPlayer.getCurrentPosition();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error getting cast player position", e);
+                    }
+                }
+
+                // Check if playerView is still valid
+                if (playerView == null) {
+                    Log.e(TAG, "onCastSessionUnavailable: playerView is null, fragment might have been destroyed");
+                    return;
+                }
+                
+                // Check if player is still valid
+                if (player == null) {
+                    Log.e(TAG, "onCastSessionUnavailable: player is null, cannot continue");
+                    return;
+                }
+
+                if (!isTvDevice) {
+                    resizeButton.setVisibility(View.VISIBLE);
+                }
+                castImage.setVisibility(View.GONE);
+                playerView.setPlayer(player);
+                player.setPlayWhenReady(true);
+                player.seekTo(videoPosition);
+                playerView.setControllerShowTimeoutMs(3000);
+                playerView.setControllerHideOnTouch(true);
+            }
+        });
+
+        // Configure listener for castPlayer events
+        castPlayer.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerStateChanged(boolean playWhenReady, int state) {
+                Map<String, Object> info = new HashMap<String, Object>() {
+                    {
+                        put("currentTime", String.valueOf(player.getCurrentPosition() / 1000));
+                    }
+                };
+                switch (state) {
+                    case CastPlayer.STATE_READY:
+                        if (castPlayer.isPlaying()) {
+                            NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
+                        } else {
+                            NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
+
+        castContext.addCastStateListener(castStateListener);
+        mediaRouter.addCallback(mSelector, mediaRouterCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
     }
 
     /**
@@ -1805,8 +1977,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     private void setSubtitleTextSize() {
         final int orientation = getResources().getConfiguration().orientation;
-        SubtitlesUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, orientation);
-        SubtitlesUtils.updateSubtitleStyle(playerView, subTitleOptions, isTvDevice, subtitlesScale, orientation);
+        SubtitleUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, orientation);
+        SubtitleUtils.updateSubtitleStyle(playerView, subTitleOptions, isTvDevice, subtitlesScale, orientation);
     }
 
 
