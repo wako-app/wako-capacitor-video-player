@@ -208,7 +208,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
         startAtSec = 0;
         if (call.getData().has("startAtSec")) {
-            startAtSec = call.getInt("startAtSec");
+            startAtSec = call.getInt("startAtSec", 0);
         }
 
 
