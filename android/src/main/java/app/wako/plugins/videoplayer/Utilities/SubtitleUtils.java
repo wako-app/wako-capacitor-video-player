@@ -433,11 +433,11 @@ public class SubtitleUtils {
             final float size;
             if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
                 // Landscape mode: base size * 1.3
-                size = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitlesScale * 1.3f;
+                size = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitlesScale * 1.1f;
             } else {
                 // Portrait mode: larger size (2.0) for better readability
                 // We don't use screen ratio to avoid inconsistencies
-                size = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitlesScale * 2.0f;
+                size = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitlesScale * 1.3f;
             }
             subtitleView.setFractionalTextSize(size);
         }
