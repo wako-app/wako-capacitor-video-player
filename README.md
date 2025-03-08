@@ -1,13 +1,358 @@
 # wako-capacitor-video-player
 
-A capacitor video player
+![Logo of wako](https://www.wako.app/_next/image?url=%2F_next%2Fstatic%2Fmedia%2Ficon.23e1084e.png&w=640&q=75)
 
-## Install
+## Official video player for wako
+
+This plugin is the official video player for [wako](https://wako.app), the media tracking application that allows you to manage and watch your favorite movies and TV shows.
+
+## Installation
 
 ```bash
 npm install wako-capacitor-video-player
 npx cap sync
 ```
+
+## Key Features
+
+The wako-capacitor video player offers numerous advanced features:
+
+- **Video playback** from remote URLs
+- **Subtitle support** with customization options
+- **Automatic selection of audio tracks and subtitles** based on preferred language
+- **Playback controls** (play, pause, seek, volume)
+- **Playback rate management** (speed)
+- **Portrait and landscape mode support**
+- **Chromecast integration** (Android)
+- **Event listeners** to customize the viewing experience
+- **Customizable user interface options**
+- **Intuitive gesture controls** for seamless user interaction
+
+## Usage Examples
+
+### Basic Player Initialization
+
+```typescript
+import { WakoCapacitorVideoPlayer } from 'wako-capacitor-video-player';
+
+// Simple initialization
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://archive.org/download/big-buck-bunny-4k-60fps/BigBuckBunny4k60fps.mp4",
+  title: "Big Buck Bunny MP4",
+  smallTitle: "My small title",
+  subtitles: [
+    {
+      url: "https://raw.githubusercontent.com/padraigfl/subtitle-ssa/refs/heads/master/test/dummySubs/3Lines.ssa",
+      name: "My Sub FR",
+    },
+  ],
+});
+```
+
+### Advanced Initialization with Complete Options
+
+```typescript
+import { WakoCapacitorVideoPlayer } from 'wako-capacitor-video-player';
+
+// Initialization with advanced options
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/video.mp4",
+  title: "My video title",
+  smallTitle: "Short description",
+  subtitles: [
+    {
+      url: "https://example.com/subtitles-fr.vtt",
+      name: "French",
+      lang: "fr"
+    },
+    {
+      url: "https://example.com/subtitles-en.vtt",
+      name: "English",
+      lang: "en"
+    }
+  ],
+  preferredLocale: "fr",
+  subtitleOptions: {
+    foregroundColor: "rgba(255,255,255,1)",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    fontSize: 18
+  },
+  rate: 1.0,
+  exitOnEnd: true,
+  loopOnEnd: false,
+  showControls: true,
+  displayMode: "all",
+  chromecast: true,
+  artwork: "https://example.com/poster.jpg",
+  startAtSec: 30
+});
+```
+
+### Playback Control
+
+```typescript
+// Play
+WakoCapacitorVideoPlayer.play();
+
+// Pause
+WakoCapacitorVideoPlayer.pause();
+
+// Navigation within the video
+WakoCapacitorVideoPlayer.setCurrentTime({ seektime: 120 }); // Go to 2 minutes
+
+// Volume control
+WakoCapacitorVideoPlayer.setVolume({ volume: 0.5 }); // 50% volume
+
+// Playback speed
+WakoCapacitorVideoPlayer.setRate({ rate: 1.5 }); // 1.5x
+```
+
+### Gesture Controls
+
+The wako-capacitor video player includes intuitive touch gesture controls for an enhanced user experience:
+
+#### Double Tap Gestures
+- **Double tap right side**: Fast-forward the video (typically 10 seconds)
+- **Double tap left side**: Rewind the video (typically 10 seconds)
+
+These double tap gestures provide a quick and intuitive way for users to navigate through the video without having to interact with the traditional seek bar.
+
+#### Additional Gesture Controls
+- **Single tap**: Show/hide the player controls
+- **Swipe left/right**: Seek through the video
+- **Swipe up/down** (right side): Adjust volume
+- **Swipe up/down** (left side): Adjust brightness (on supported devices)
+- **Pinch gesture**: Zoom in/out on the video content
+
+Gesture controls automatically adapt to the device orientation and work seamlessly in both portrait and landscape modes, providing a consistent user experience across different viewing scenarios.
+
+### Event Handling
+
+```typescript
+// Listen for play event
+WakoCapacitorVideoPlayer.addListener('playerPlay', (info) => {
+  console.log('Video is playing, current time:', info.currentTime);
+});
+
+// Listen for end of video event
+WakoCapacitorVideoPlayer.addListener('playerEnded', (info) => {
+  console.log('Playback has ended');
+});
+
+// Listen for player exit event
+WakoCapacitorVideoPlayer.addListener('playerExit', (info) => {
+  console.log('User exited the player');
+  console.log('Current time:', info.currentTime);
+  console.log('Exit requested by user:', info.dismiss);
+});
+```
+
+## Advanced Use Cases
+
+### Integration in a React Application
+
+```typescript
+import { useEffect, useState } from 'react';
+import { WakoCapacitorVideoPlayer } from 'wako-capacitor-video-player';
+
+const VideoPlayerComponent = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  useEffect(() => {
+    // Player initialization
+    const initializePlayer = async () => {
+      await WakoCapacitorVideoPlayer.initPlayer({
+        url: "https://example.com/video.mp4",
+        title: "My video",
+        smallTitle: "Description",
+        subtitles: [
+          { url: "https://example.com/subtitles-fr.vtt", name: "French", lang: "fr" }
+        ],
+        preferredLocale: "fr"
+      });
+    };
+
+    // Event listeners
+    const playListener = WakoCapacitorVideoPlayer.addListener('playerPlay', (info) => {
+      setIsPlaying(true);
+      setCurrentTime(info.currentTime);
+    });
+
+    const pauseListener = WakoCapacitorVideoPlayer.addListener('playerPause', (info) => {
+      setIsPlaying(false);
+      setCurrentTime(info.currentTime);
+    });
+
+    const exitListener = WakoCapacitorVideoPlayer.addListener('playerExit', (info) => {
+      setIsPlaying(false);
+      setCurrentTime(info.currentTime);
+    });
+
+    initializePlayer();
+
+    // Cleanup listeners
+    return () => {
+      playListener.then(listener => listener.remove());
+      pauseListener.then(listener => listener.remove());
+      exitListener.then(listener => listener.remove());
+    };
+  }, []);
+
+  return (
+    <div>
+      <div>Status: {isPlaying ? 'Playing' : 'Paused'}</div>
+      <div>Current time: {currentTime} seconds</div>
+      <button onClick={() => WakoCapacitorVideoPlayer.play()}>Play</button>
+      <button onClick={() => WakoCapacitorVideoPlayer.pause()}>Pause</button>
+    </div>
+  );
+};
+
+export default VideoPlayerComponent;
+```
+
+### Managing Multiple Audio Tracks and Subtitles
+
+```typescript
+import { WakoCapacitorVideoPlayer } from 'wako-capacitor-video-player';
+
+// Initialization with multiple audio track and subtitle options
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/film.mp4",
+  title: "Multi-language film",
+  subtitles: [
+    { url: "https://example.com/subtitles-fr.vtt", name: "French", lang: "fr" },
+    { url: "https://example.com/subtitles-en.vtt", name: "English", lang: "en" },
+    { url: "https://example.com/subtitles-es.vtt", name: "Spanish", lang: "es" },
+    { url: "https://example.com/subtitles-de.vtt", name: "German", lang: "de" }
+  ],
+  preferredLocale: "fr", // Automatic selection of French track if available
+});
+
+// Listen for track changes
+WakoCapacitorVideoPlayer.addListener('playerTracksChanged', (info) => {
+  console.log('Current audio track:', info.audioTrack);
+  console.log('Current subtitle track:', info.subtitleTrack);
+});
+```
+
+## Error Handling
+
+To handle potential errors when using the plugin, you can use the standard promise structure:
+
+```typescript
+try {
+  const result = await WakoCapacitorVideoPlayer.initPlayer({
+    url: "https://example.com/video.mp4",
+    title: "My Video"
+  });
+  
+  if (result.result) {
+    console.log("Player initialized successfully");
+  } else {
+    console.error("Initialization error:", result.message);
+  }
+} catch (error) {
+  console.error("Exception during player initialization:", error);
+}
+```
+
+## User Interface Customization
+
+### Custom Subtitle Colors
+
+```typescript
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/video.mp4",
+  title: "Video with custom subtitles",
+  subtitles: [
+    { url: "https://example.com/subtitles.vtt", name: "English", lang: "en" }
+  ],
+  subtitleOptions: {
+    foregroundColor: "rgba(255,255,0,1)", // Yellow text
+    backgroundColor: "rgba(0,0,0,0.5)",   // Semi-transparent black background
+    fontSize: 20                         // Larger font size
+  }
+});
+```
+
+### Specific Display Modes
+
+```typescript
+// Portrait mode only
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/video-portrait.mp4",
+  title: "Portrait Mode",
+  displayMode: "portrait"
+});
+
+// Landscape mode only
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/video-landscape.mp4",
+  title: "Landscape Mode",
+  displayMode: "landscape"
+});
+```
+
+## Chromecast Integration (Android)
+
+The Chromecast feature allows users to stream video content to a Chromecast-compatible device:
+
+```typescript
+WakoCapacitorVideoPlayer.initPlayer({
+  url: "https://example.com/video-hd.mp4",
+  title: "HD Movie",
+  smallTitle: "HD Streaming",
+  chromecast: true,
+  artwork: "https://example.com/poster.jpg" // Image displayed on Chromecast screen
+});
+```
+
+## Platform-Specific Capabilities
+
+### Android
+- Full Chromecast support
+- Interface customization with title and subtitle
+- Artwork for Chromecast sessions
+
+### iOS
+- Native interface adapted to Apple standards
+- Support for specific orientation modes
+- Performance optimization for iOS devices
+
+## Optimization Tips
+
+1. **Subtitle preloading**: Ensure subtitle files are available before initializing the player
+2. **Adaptive video format**: Use formats like HLS or DASH for network bandwidth adaptation
+3. **Memory management**: Call `stopAllPlayers()` or `exitPlayer()` when you no longer need the player
+4. **Local storage**: For frequently watched videos, consider caching them locally
+
+## FAQ
+
+**Q: How can I implement a playback resume mechanism?**
+A: Use `addListener('playerExit')` to save the position with `getCurrentTime()`, then use `startAtSec` when reinitializing.
+
+**Q: Can I customize the player controls?**
+A: Controls are natively managed by the platform. You can show/hide them with `showControls` but not customize them.
+
+**Q: How do I handle videos with DRM?**
+A: The plugin supports URLs with standard DRM protection, but specific configurations may be necessary depending on the DRM system.
+
+## Security and Permissions
+
+The plugin requires certain permissions to function properly:
+
+### Android
+- `INTERNET` for online content playback
+- `ACCESS_NETWORK_STATE` for connectivity detection
+
+### iOS
+- No specific permissions required beyond the standard application capabilities
+
+---
+
+The wako-capacitor video player is actively maintained and optimized to offer the best possible viewing experience, while seamlessly integrating into the [wako app](https://wako.app) ecosystem.
 
 ## API
 
