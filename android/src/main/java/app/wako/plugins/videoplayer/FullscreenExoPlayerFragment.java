@@ -508,7 +508,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         // Brightness management
                         if (isChangingBrightness && mBrightnessControl != null) {
                             // Calculate brightness adjustment based on vertical movement with reduced sensitivity
-                            float brightnessChange = -deltaY / (playerView.getHeight() * 30.0f); // Reduced sensitivity
+                            float brightnessChange = -deltaY / (playerView.getHeight() ); // Reduced sensitivity
                             float newBrightness;
                             
                             // If we are near the bottom of the screen and lowering brightness
@@ -1193,6 +1193,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         firstReadyCalled = true;
                         NotificationCenter.defaultCenter().postNotification("playerStateReady", info);
                         TrackUtils.selectTracksOldWay(player, trackSelector, subtitleTrackId, subtitleLocale, audioTrackId, audioLocale, preferredLocale);
+
+                        setSubtitleTextSize();
                     }
                     
                     subtitleManager.refreshSubtitleButton();
@@ -1800,25 +1802,18 @@ public class FullscreenExoPlayerFragment extends Fragment {
         setVolumeLevel(volumeLevel, volumeLevel > (currentVolumePercent / 100f));
     }
 
+
     private void setSubtitleTextSize() {
-        SubtitlesUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, getResources().getConfiguration().orientation);
-    }
-
-    private void setSubtitleTextSize(final int orientation) {
+        final int orientation = getResources().getConfiguration().orientation;
         SubtitlesUtils.setSubtitleTextSize(playerView, isTvDevice, subtitlesScale, orientation);
+        SubtitlesUtils.updateSubtitleStyle(playerView, subTitleOptions, isTvDevice, subtitlesScale, orientation);
     }
 
-    private void updateSubtitleStyle() {
-        SubtitlesUtils.updateSubtitleStyle(playerView, subTitleOptions, isTvDevice, subtitlesScale, getResources().getConfiguration().orientation);
-    }
 
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // Force subtitle size update
-        setSubtitleTextSize(newConfig.orientation);
-        // Force style update which will also reapply the size
-        updateSubtitleStyle();
+        setSubtitleTextSize();
     }
 
 }
