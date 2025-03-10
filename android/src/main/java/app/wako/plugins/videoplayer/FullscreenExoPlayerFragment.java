@@ -81,6 +81,10 @@ import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
+import com.google.android.gms.cast.MediaStatus;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -322,6 +326,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
         gestureDetector = new GestureDetector(fragmentContext, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (isCasting) {
+                    // During casting, always show controls instead of toggling
+                    playerView.showController();
+                    return true;
+                }
+                
                 if (controllerVisibleFully) {
                     playerView.hideController();
                 } else {
@@ -332,6 +342,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
             @Override
             public boolean onDoubleTap(MotionEvent e) {
+                // Disable double taps during casting
+                if (isCasting) {
+                    return true;
+                }
+
                 if (player == null || player.isCurrentMediaItemLive()) {
                     return false;
                 }
@@ -372,6 +387,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
             public boolean onTouch(View v, MotionEvent event) {
                 // Always pass the event to gestureDetector first for double tap
                 boolean gestureResult = gestureDetector.onTouchEvent(event);
+                
+                // In casting mode, limit gestures
+                if (isCasting) {
+                    // Only allow simple taps that are handled by the gestureDetector
+                    return true;
+                }
                 
                 // If the gestureDetector has consumed the event (double tap), do nothing else
                 if (gestureResult) {
@@ -419,9 +440,24 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         isChangingVolume = false;
                         isChangingBrightness = false;
                         isChangingPosition = false;
+                        
+                        // If in casting mode, disable advanced gestures
+                        if (isCasting) {
+                            return true;
+                        }
+                        
                         return true;
                         
                     case MotionEvent.ACTION_MOVE:
+                        // If in casting mode, avoid processing movements
+                        if (isCasting) {
+                            return true;
+                        }
+
+                        if (player != null && player.isCurrentMediaItemLive()) {
+                            return true;
+                        }
+                        
                         float deltaX = event.getX() - initialX;
                         float deltaY = event.getY() - initialY;
                         
@@ -536,7 +572,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         // Handling volume
                         if (isChangingVolume) {
                             // Calculate volume adjustment based on vertical movement with extremely reduced sensitivity
-                            float volumeChange = -deltaY / (playerView.getHeight() * 50.0f); // Reduced sensitivity even more
+                            float volumeChange = -deltaY / (playerView.getHeight() * 60.0f); // Reduced sensitivity even more
                             
                             // Determine if volume is increasing or decreasing
                             boolean isIncreasing = volumeChange > 0;
@@ -570,23 +606,26 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
+                        // If in casting mode, ignore the end of the gesture
+                        if (isCasting) {
+                            return true;
+                        }
+
                         // Hide indicators after a short delay
                         if (isChangingBrightness || isChangingVolume || isChangingPosition) {
-                            Handler handler = new Handler(Looper.getMainLooper());
-                            handler.postDelayed(new Runnable() {
+                            indicatorHandler.postDelayed(new Runnable() {
                                 @Override
                                 public void run() {
-                                    if (volumeIndicator != null) volumeIndicator.setVisibility(View.GONE);
-                                    if (brightnessIndicator != null) brightnessIndicator.setVisibility(View.GONE);
-                                    if (seekIndicator != null) seekIndicator.setVisibility(View.GONE);
+                                    hideAllIndicators();
                                 }
-                            }, 1000); // Hide after 1 second
+                            }, 500);
                             
                             // Restore playback if it was paused for seeking
                             if (isChangingPosition && restorePlayState && player != null) {
                                 player.play();
                                 restorePlayState = false;
                             }
+                            
                             return true;
                         }
                         
@@ -1420,28 +1459,50 @@ public class FullscreenExoPlayerFragment extends Fragment {
             case KeyEvent.KEYCODE_BUTTON_L2:
             case KeyEvent.KEYCODE_MEDIA_REWIND:
                 if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
-                    if (player == null) break;
-                    long pos = player.getCurrentPosition();
-
-                    long seekTo = pos - 10_000;
-                    if (seekTo < 0) seekTo = 0;
-                    player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
-                    player.seekTo(seekTo);
-                    return true;
+                    if (isCasting && castPlayer != null) {
+                        // During casting, ensure consistent 10 second rewind
+                        try {
+                            long pos = castPlayer.getCurrentPosition();
+                            long seekTo = Math.max(0, pos - 10_000);
+                            castPlayer.seekTo(seekTo);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error seeking in cast player", e);
+                        }
+                        return true;
+                    } else if (player != null) {
+                        long pos = player.getCurrentPosition();
+                        long seekTo = pos - 10_000;
+                        if (seekTo < 0) seekTo = 0;
+                        player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
+                        player.seekTo(seekTo);
+                        return true;
+                    }
                 }
                 break;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_BUTTON_R2:
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                 if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-                    if (player == null) break;
-                    long pos = player.getCurrentPosition();
-                    long seekTo = pos + 10_000;
-                    long seekMax = player.getDuration();
-                    if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
-                    player.setSeekParameters(SeekParameters.NEXT_SYNC);
-                    player.seekTo(seekTo);
-                    return true;
+                    if (isCasting && castPlayer != null) {
+                        // During casting, ensure consistent 10 second forward
+                        try {
+                            long pos = castPlayer.getCurrentPosition();
+                            long duration = castPlayer.getDuration();
+                            long seekTo = Math.min(duration, pos + 10_000);
+                            castPlayer.seekTo(seekTo);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error seeking in cast player", e);
+                        }
+                        return true;
+                    } else if (player != null) {
+                        long pos = player.getCurrentPosition();
+                        long seekTo = pos + 10_000;
+                        long seekMax = player.getDuration();
+                        if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
+                        player.setSeekParameters(SeekParameters.NEXT_SYNC);
+                        player.seekTo(seekTo);
+                        return true;
+                    }
                 }
                 break;
             case KeyEvent.KEYCODE_BACK:
@@ -1761,11 +1822,28 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 
                 // Configure castPlayer and switch PlayerView
                 if (mediaItem != null) {
+                    // Set consistent seek increments (10 seconds for both rewind and forward)
+                    try {
+                        RemoteMediaClient remoteMediaClient = castContext.getSessionManager()
+                                .getCurrentCastSession().getRemoteMediaClient();
+                        
+                        if (remoteMediaClient != null) {
+                            // Note: We cannot directly configure the skip time for RemoteMediaClient
+                            // but we'll handle it in the UI interactions
+                            Log.d(TAG, "Cast session established - media client ready");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error accessing cast remote media client", e);
+                    }
+
                     castPlayer.setMediaItem(mediaItem, videoPosition);
                     playerView.setPlayer(castPlayer);
+                    // Keep controller visible at all times in casting mode
                     playerView.setControllerShowTimeoutMs(0);
                     playerView.setControllerHideOnTouch(false);
-                    playerView.performClick();
+                    
+                    // Show the controller immediately
+                    playerView.showController();
                 } else {
                     Log.e(TAG, "Cannot set media item: mediaItem is null");
                 }
@@ -1797,10 +1875,18 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     return;
                 }
 
+                // Reset visual controls
                 if (!isTvDevice) {
                     resizeButton.setVisibility(View.VISIBLE);
                 }
-                castImage.setVisibility(View.GONE);
+                if (castImage != null) {
+                    castImage.setVisibility(View.GONE);
+                }
+                
+                // Make sure all indicators are hidden
+                hideAllIndicators();
+                
+                // Restore the player configuration
                 playerView.setPlayer(player);
                 player.setPlayWhenReady(true);
                 player.seekTo(videoPosition);
@@ -1986,6 +2072,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         setSubtitleTextSize();
+    }
+
+    private void hideAllIndicators() {
+        if (volumeIndicator != null) volumeIndicator.setVisibility(View.GONE);
+        if (brightnessIndicator != null) brightnessIndicator.setVisibility(View.GONE);
+        if (seekIndicator != null) seekIndicator.setVisibility(View.GONE);
+        if (rewindIndicator != null) rewindIndicator.setVisibility(View.GONE);
+        if (forwardIndicator != null) forwardIndicator.setVisibility(View.GONE);
     }
 
 }
