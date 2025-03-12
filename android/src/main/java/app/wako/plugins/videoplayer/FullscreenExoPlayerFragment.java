@@ -189,10 +189,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private float lastX;
     private float lastMoveSpeed;
     private long accumulatedSeekMs = 0;
+    private float lastY;
     
     // Thresholds for gesture detection
     private static final float SWIPE_THRESHOLD = 60f;
-    private static final float SWIPE_VELOCITY_THRESHOLD = 150f;
+    // Fixed value for volume sensitivity (higher = less sensitive)
+    private static final float VOLUME_CHANGE_FACTOR = 6000f;
+
     
     // Indicators for brightness, volume and seeking
     private TextView brightnessIndicator;
@@ -440,6 +443,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         isChangingVolume = false;
                         isChangingBrightness = false;
                         isChangingPosition = false;
+                        lastY = initialY;
                         
                         // If in casting mode, disable advanced gestures
                         if (isCasting) {
@@ -460,6 +464,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                         float deltaX = event.getX() - initialX;
                         float deltaY = event.getY() - initialY;
+                        float currentY = event.getY();
                         
                         // Determine gesture type (horizontal or vertical)
                         if (!isChangingVolume && !isChangingBrightness && !isChangingPosition) {
@@ -571,34 +576,52 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         
                         // Handling volume
                         if (isChangingVolume) {
-                            // Calculate volume adjustment based on vertical movement with extremely reduced sensitivity
-                            float volumeChange = -deltaY / (playerView.getHeight() * 60.0f); // Reduced sensitivity even more
+                            // Determine if volume is increasing or decreasing based on movement since last position
+                            boolean isIncreasing = currentY < lastY;  // Moving up increases volume
                             
-                            // Determine if volume is increasing or decreasing
-                            boolean isIncreasing = volumeChange > 0;
+                            // Calculate base volume change with fixed sensitivity
+                            float baseVolumeChange = Math.abs(currentY - lastY) / VOLUME_CHANGE_FACTOR;
                             
-                            // Get current system volume for display
-                            if (mAudioManager != null) {
-                                float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                                float currentVolumeNormalized = currentVolume / maxVolume;
-                                
-                                // Calculate and apply the new volume in steps
-                                setVolumeLevel(currentVolumeNormalized + volumeChange, isIncreasing);
-                                
-                                // Display volume indicator
-                                volumeIndicator.setVisibility(View.VISIBLE);
-                                volumeIndicator.setBackgroundResource(R.drawable.rounded_black_background);
-                                
-                                if (currentVolumePercent == 0) {
-                                    // Volume at 0%
-                                    volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_off_24dp), null, null, null);
-                                    volumeIndicator.setText("0%");
-                                } else {
-                                    // Normal volume
-                                    volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_up_24dp), null, null, null);
-                                    volumeIndicator.setText(currentVolumePercent + "%");
-                                }
+                            // Get current volume level
+                            float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                            float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                            float currentVolumeNormalized = systemVolume / maxVolume;
+                            
+                            // Apply progressive sensitivity reduction for high volumes
+                            float volumeChange;
+                            if (currentVolumeNormalized >= 0.9f) {
+                                volumeChange = baseVolumeChange * 0.05f;  // 95% reduction
+                            } else if (currentVolumeNormalized >= 0.8f) {
+                                volumeChange = baseVolumeChange * 0.1f;   // 90% reduction
+                            } else if (currentVolumeNormalized >= 0.7f) {
+                                volumeChange = baseVolumeChange * 0.2f;   // 80% reduction
+                            } else if (currentVolumeNormalized >= 0.5f) {
+                                volumeChange = baseVolumeChange * 0.4f;   // 60% reduction
+                            } else {
+                                volumeChange = baseVolumeChange * 0.6f;   // 40% reduction de base
+                            }
+                            
+                            // Apply the volume change in the correct direction
+                            float newVolume = currentVolumeNormalized + (isIncreasing ? volumeChange : -volumeChange);
+                            
+                            // Calculate and apply the new volume in steps
+                            setVolumeLevel(newVolume, isIncreasing);
+                            
+                            // Update last Y position
+                            lastY = currentY;
+
+                            // Display volume indicator
+                            volumeIndicator.setVisibility(View.VISIBLE);
+                            volumeIndicator.setBackgroundResource(R.drawable.rounded_black_background);
+                            
+                            if (currentVolumePercent == 0) {
+                                // Volume at 0%
+                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_off_24dp), null, null, null);
+                                volumeIndicator.setText("0%");
+                            } else {
+                                // Normal volume
+                                volumeIndicator.setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(R.drawable.ic_volume_up_24dp), null, null, null);
+                                volumeIndicator.setText(currentVolumePercent + "%");
                             }
                         }
                         
