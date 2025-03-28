@@ -74,17 +74,13 @@ import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
-import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.CastState;
 import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.ImmutableList;
-import com.google.android.gms.cast.MediaStatus;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -1285,7 +1281,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             switch (state) {
                 case ExoPlayer.STATE_IDLE:
                     stateString = "ExoPlayer.STATE_IDLE      -";
-                    Toast.makeText(fragmentContext, "Video Url not found", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(fragmentContext, "Video URL cannot be played", Toast.LENGTH_SHORT).show();
                     playerExit();
                     break;
                 case ExoPlayer.STATE_BUFFERING:
