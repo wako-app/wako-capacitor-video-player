@@ -12,62 +12,62 @@ export interface WakoCapacitorVideoPlayerPlugin {
    */
   initPlayer(options: capVideoPlayerOptions): Promise<capVideoPlayerResult>;
   /**
-   * Return if a given playerId is playing
+   * Return if the video is playing
    *
    */
   isPlaying(): Promise<capVideoPlayerResult>;
   /**
-   * Play the current video from a given playerId
+   * Play the current video
    *
    */
   play(): Promise<capVideoPlayerResult>;
   /**
-   * Pause the current video from a given playerId
+   * Pause the current video
    *
    */
   pause(): Promise<capVideoPlayerResult>;
   /**
-   * Get the duration of the current video from a given playerId
+   * Get the duration of the current video
    *
    */
   getDuration(): Promise<capVideoPlayerResult>;
   /**
-   * Get the current time of the current video from a given playerId
+   * Get the current time of the current video
    *
    */
   getCurrentTime(): Promise<capVideoPlayerResult>;
   /**
-   * Set the current time to seek the current video to from a given playerId
+   * Set the current time to seek the current video to
    *
    */
   setCurrentTime(options: capVideoTimeOptions): Promise<capVideoPlayerResult>;
   /**
-   * Get the volume of the current video from a given playerId
+   * Get the volume of the current video
    *
    */
   getVolume(): Promise<capVideoPlayerResult>;
   /**
-   * Set the volume of the current video to from a given playerId
+   * Set the volume of the current video
    *
    */
   setVolume(options: capVideoVolumeOptions): Promise<capVideoPlayerResult>;
   /**
-   * Get the muted of the current video from a given playerId
+   * Get the muted state of the current video
    *
    */
   getMuted(): Promise<capVideoPlayerResult>;
   /**
-   * Set the muted of the current video to from a given playerId
+   * Set the muted state of the current video
    *
    */
   setMuted(options: capVideoMutedOptions): Promise<capVideoPlayerResult>;
   /**
-   * Set the rate of the current video from a given playerId
+   * Set the rate of the current video
    *
    */
   setRate(options: capVideoRateOptions): Promise<capVideoPlayerResult>;
   /**
-   * Get the rate of the current video from a given playerId
+   * Get the rate of the current video
    *
    */
   getRate(): Promise<capVideoPlayerResult>;
@@ -246,20 +246,12 @@ export interface capVideoTimeOptions {
 }
 export interface capVideoMutedOptions {
   /**
-   * Player Id
-   */
-  playerId?: string;
-  /**
    * Muted value
    */
   muted?: boolean;
 }
 
 export interface capVideoSubtitlesOptions {
-  /**
-   * Player Id
-   */
-  playerId?: string;
   /**
    * Enable or disable subtitles
    */
