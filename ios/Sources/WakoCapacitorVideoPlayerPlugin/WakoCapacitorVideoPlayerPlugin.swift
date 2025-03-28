@@ -2,10 +2,6 @@ import Foundation
 import Capacitor
 import MobileVLCKit
 
-/**
- * Please read the Capacitor iOS Plugin Development Guide
- * here: https://capacitorjs.com/docs/plugins/ios
- */
 @objc(WakoCapacitorVideoPlayerPlugin)
 public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "WakoCapacitorVideoPlayerPlugin"
@@ -13,7 +9,6 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     private let implementation = WakoCapacitorVideoPlayer()
     
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "echo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "initPlayer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isPlaying", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
@@ -36,14 +31,61 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     override public func load() {
         print("[WakoCapacitorVideoPlayerPlugin] Plugin loaded")
         print("[WakoCapacitorVideoPlayerPlugin] Available methods: \(pluginMethods.map { $0.name })")
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlayerExited),
+            name: NSNotification.Name("WakoPlayerExited"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlayerReady),
+            name: NSNotification.Name("WakoPlayerReady"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTracksChanged),
+            name: NSNotification.Name("WakoPlayerTracksChanged"),
+            object: nil
+        )
     }
 
-    @objc func echo(_ call: CAPPluginCall) {
-        print("[WakoCapacitorVideoPlayerPlugin] echo called")
-        let value = call.getString("value") ?? ""
-        call.resolve([
-            "value": value
+    @objc private func handlePlayerReady(_ notification: Notification) {
+        print("[WakoCapacitorVideoPlayerPlugin] Player ready notification received")
+        if let currentTime = notification.userInfo?["currentTime"] as? Double {
+            notifyListeners("playerReady", data: [
+                "currentTime": currentTime
+            ])
+        }
+    }
+
+    @objc private func handlePlayerExited() {
+        print("[WakoCapacitorVideoPlayerPlugin] Player exited notification received")
+        let currentTime = implementation.getCurrentTime()
+        let success = implementation.exitPlayer()
+        if success {
+            print("[WakoCapacitorVideoPlayerPlugin] Player exited successfully from close button")
+        } else {
+            print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found during close")
+        }
+        notifyListeners("playerExit", data: [
+            "dismiss": success,
+            "currentTime": currentTime
         ])
+    }
+
+    @objc private func handleTracksChanged(_ notification: Notification) {
+        print("[WakoCapacitorVideoPlayerPlugin] Tracks changed notification received")
+        var data: [String: Any] = ["fromPlayerId": "player1"]
+        if let audioTrack = notification.userInfo?["audioTrack"] as? [String: Any] {
+            data["audioTrack"] = audioTrack
+        }
+        if let subtitleTrack = notification.userInfo?["subtitleTrack"] as? [String: Any] {
+            data["subtitleTrack"] = subtitleTrack
+        }
+        notifyListeners("playerTracksChanged", data: data)
     }
     
     @objc func initPlayer(_ call: CAPPluginCall) {
@@ -54,16 +96,27 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        implementation.createPlayer()
-        print("[WakoCapacitorVideoPlayerPlugin] Player created")
-        
-        let success = implementation.play(url: url)
-        if success {
-            print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
-            call.resolve()
-        } else {
-            print("[WakoCapacitorVideoPlayerPlugin] Error: Failed to start playback")
-            call.reject("Failed to start playback")
+        implementation.createPlayer { [weak self] success in
+            guard let self = self else {
+                call.reject("Plugin instance lost")
+                return
+            }
+            print("[WakoCapacitorVideoPlayerPlugin] Player created: \(success)")
+            
+            if success {
+                self.implementation.play(url: url) { playSuccess in
+                    if playSuccess {
+                        print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
+                        call.resolve()
+                    } else {
+                        print("[WakoCapacitorVideoPlayerPlugin] Error: Failed to start playback")
+                        call.reject("Failed to start playback")
+                    }
+                }
+            } else {
+                print("[WakoCapacitorVideoPlayerPlugin] Error: Failed to create player")
+                call.reject("Failed to create player")
+            }
         }
     }
     
@@ -85,14 +138,15 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         
         print("[WakoCapacitorVideoPlayerPlugin] Playing URL: \(url)")
         print("[WakoCapacitorVideoPlayerPlugin] Implementation: \(implementation)")
-        let success = implementation.play(url: url)
-        print("[WakoCapacitorVideoPlayerPlugin] Play result: \(success)")
-        if success {
-            print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
-            call.resolve()
-        } else {
-            print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
-            call.reject("Player not found")
+        implementation.play(url: url) { success in
+            print("[WakoCapacitorVideoPlayerPlugin] Play result: \(success)")
+            if success {
+                print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
+                call.resolve()
+            } else {
+                print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
+                call.reject("Player not found")
+            }
         }
     }
     
@@ -134,7 +188,7 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        let success = implementation.seek( time: seektime)
+        let success = implementation.seek(time: seektime)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Seek successful")
             call.resolve()
@@ -160,7 +214,7 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        let success = implementation.setVolume( volume: Int(volume * 100))
+        let success = implementation.setVolume(volume: Int(volume * 100))
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Volume set successfully")
             call.resolve()
@@ -186,7 +240,7 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        let success = implementation.setMuted( muted: muted)
+        let success = implementation.setMuted(muted: muted)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Muted set successfully")
             call.resolve()
@@ -204,7 +258,7 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        let success = implementation.setRate( rate: rate)
+        let success = implementation.setRate(rate: rate)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Rate set successfully")
             call.resolve()
