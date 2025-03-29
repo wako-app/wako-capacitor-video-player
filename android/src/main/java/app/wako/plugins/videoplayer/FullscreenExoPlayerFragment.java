@@ -170,7 +170,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private float initialX;
     private float initialY;
     private float initialBrightness;
-    private float initialVolume;
     private boolean isChangingVolume = false;
     private boolean isChangingBrightness = false;
     private boolean isChangingPosition = false;
@@ -194,9 +193,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private TextView volumeIndicator;
     private TextView seekIndicator;
     
-    // Window manager for changing brightness
-    private WindowManager.LayoutParams layoutParams;
-    
+
     // BrightnessControl
     private BrightnessControl mBrightnessControl;
     private AudioManager mAudioManager;
@@ -227,7 +224,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     private float initialSystemVolume;
     private float systemMaxVolume;
     private static final String TAG_VOLUME = "VIDEO_VOLUME"; // More visible tag for logs
-    private boolean shouldRestoreBrightness = true;
     private int lastSetVolume = -1; // To track the last set volume
     private static final int MAX_VOLUME = 100; // Maximum volume (100%)
     private int currentVolumePercent = 50; // Current volume level in percentage
@@ -268,19 +264,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
             Log.e(TAG_VOLUME, "INITIAL system volume: " + initialSystemVolume + "/" + systemMaxVolume);
         }
         
-        // Initialization of brightness control and save initial brightness
-        if (getActivity() != null) {
-            layoutParams = getActivity().getWindow().getAttributes();
-            mBrightnessControl = new BrightnessControl(getActivity());
-            initialBrightness = mBrightnessControl.getScreenBrightness();
-            
-            // Detect if brightness is in auto mode
-            initialIsAutoBrightness = (initialBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
-            isAutoBrightness = initialIsAutoBrightness;
-        }
-
-
-
         // Initialize views
         controlsContainer = fragmentView.findViewById(R.id.linearLayout);
         playerView = fragmentView.findViewById(R.id.videoViewId);
@@ -305,14 +288,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
         brightnessIndicator = fragmentView.findViewById(R.id.brightness_indicator);
         volumeIndicator = fragmentView.findViewById(R.id.volume_indicator);
         seekIndicator = fragmentView.findViewById(R.id.seek_indicator);
-        
-        // Initialize BrightnessControl
-        if (getActivity() != null) {
-            layoutParams = getActivity().getWindow().getAttributes();
-            mBrightnessControl = new BrightnessControl(getActivity());
-            initialBrightness = mBrightnessControl.getScreenBrightness();
-            mBrightnessControl.currentBrightnessLevel = 15; // Default medium brightness level
-        }
         
         // Get AudioManager
         mAudioManager = (AudioManager) fragmentContext.getSystemService(Context.AUDIO_SERVICE);
@@ -431,7 +406,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
                         accumulatedSeekMs = 0;
                         initialPosition = player != null ? player.getCurrentPosition() : 0;
                         totalDuration = player != null ? player.getDuration() : 0;
-                        initialVolume = player != null ? player.getVolume() : 0.5f;
                         isChangingVolume = false;
                         isChangingBrightness = false;
                         isChangingPosition = false;
@@ -479,9 +453,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                 } else {
                                     // Right side - Volume
                                     isChangingVolume = true;
-                                    if (mAudioManager != null) {
-                                        initialVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / systemMaxVolume;
-                                    }
                                 }
                             }
                         }
@@ -1227,7 +1198,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         player.prepare();
         
-        player.setPlayWhenReady(playbackRate != null);
+        player.setPlayWhenReady(true);
         
         ImmutableList<Tracks.Group> trackGroups = player.getCurrentTracks().getGroups();
         for (int i = 0; i < trackGroups.size(); i++) {
