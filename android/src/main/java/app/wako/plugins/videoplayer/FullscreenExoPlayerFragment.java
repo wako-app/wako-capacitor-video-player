@@ -113,14 +113,10 @@ import app.wako.plugins.videoplayer.Utilities.TrackUtils;
 public class FullscreenExoPlayerFragment extends Fragment {
     public String videoUrl;
     public Float playbackRate;
-
     public ArrayList<SubtitleItem> subtitles;
     public String preferredLocale;
     public JSObject subTitleOptions;
     public Boolean isTvDevice;
-    public Boolean shouldExitOnEnd;
-    public Boolean shouldLoopOnEnd;
-    public Boolean showControls;
     public String displayMode = "all";
     public String videoTitle;
     public String videoSubtitle;
@@ -1222,11 +1218,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         this.subtitleManager.setPlayer(player);
         this.subtitleManager.loadExternalSubtitles(subtitles, mediaItemBuilder);
 
-        if (shouldLoopOnEnd) {
-            player.setRepeatMode(Player.REPEAT_MODE_ONE);
-        } else {
-            player.setRepeatMode(Player.REPEAT_MODE_OFF);
-        }
+        player.setRepeatMode(Player.REPEAT_MODE_OFF);
 
         MediaItem mediaItem = mediaItemBuilder.build();
 
@@ -1291,7 +1283,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 case ExoPlayer.STATE_READY:
                     stateString = "ExoPlayer.STATE_READY     -";
                     progressBar.setVisibility(View.GONE);
-                    playerView.setUseController(showControls);
+                    playerView.setUseController(true);
                     controlsContainer.setVisibility(View.INVISIBLE);
                     
                     // Set volume when player is ready, but only if not on TV
@@ -1341,10 +1333,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     
                     player.seekTo(0);
                     player.setPlayWhenReady(false);
-                    if (shouldExitOnEnd) {
-                        releasePlayer();
-                        NotificationCenter.defaultCenter().postNotification("playerStateEnd", info);
-                    }
+
+                    releasePlayer();
+                    NotificationCenter.defaultCenter().postNotification("playerStateEnd", info);
+
                     break;
                 default:
                     stateString = "UNKNOWN_STATE             -";

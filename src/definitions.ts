@@ -148,26 +148,7 @@ export interface capVideoPlayerOptions {
    * SubTitle Options
    */
   subtitleOptions?: SubTitleOptions;
-  /**
-   * Initial playing rate
-   */
-  rate?: number;
-  /**
-   * Exit on VideoEnd (iOS, Android)
-   * default: true
-   */
-  exitOnEnd?: boolean;
-  /**
-   * Loop on VideoEnd when exitOnEnd false (iOS, Android)
-   * default: false
-   */
-  loopOnEnd?: boolean;
 
-  /**
-   * Show Controls Enable (iOS, Android)
-   * default: true
-   */
-  showControls?: boolean;
   /**
    * Display Mode ["all", "portrait", "landscape"] (iOS, Android)
    * default: "all"

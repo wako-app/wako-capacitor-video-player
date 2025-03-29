@@ -22,10 +22,6 @@ public class WakoCapacitorVideoPlayer {
     @OptIn(markerClass = UnstableApi.class)
     public FullscreenExoPlayerFragment createFullScreenFragment(
         String videoUrl,
-        Float videoRate,
-        Boolean exitOnEnd,
-        Boolean loopOnEnd,
-        Boolean showControls,
         String displayMode,
         ArrayList<SubtitleItem> subtitles,
         String preferredLocale,
@@ -44,10 +40,6 @@ public class WakoCapacitorVideoPlayer {
         FullscreenExoPlayerFragment fsFragment = new FullscreenExoPlayerFragment();
 
         fsFragment.videoUrl = videoUrl;
-        fsFragment.playbackRate = videoRate;
-        fsFragment.shouldExitOnEnd = exitOnEnd;
-        fsFragment.shouldLoopOnEnd = loopOnEnd;
-        fsFragment.showControls = showControls;
         fsFragment.displayMode = displayMode;
         fsFragment.subtitles = subtitles;
         fsFragment.preferredLocale = preferredLocale;

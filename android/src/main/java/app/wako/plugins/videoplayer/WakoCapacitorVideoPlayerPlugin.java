@@ -44,12 +44,8 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
     private String videoUrl;
     private JSONArray subtitles;
     private Boolean isTV;
-    private Boolean exitOnEnd = true;
-    private Boolean loopOnEnd = false;
-    private Boolean showControls = true;
     private String displayMode = "all";
     private FullscreenExoPlayerFragment fsFragment;
-    private JSObject headers;
     private FragmentUtils fragmentUtils;
     private PluginCall call;
     private final Float[] rateList = {0.25f, 0.5f, 0.75f, 1f, 2f, 4f};
@@ -103,23 +99,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             }
         }
 
-        Boolean _exitOnEnd = true;
-        if (call.getData().has("exitOnEnd")) {
-            _exitOnEnd = call.getBoolean("exitOnEnd");
-        }
-        exitOnEnd = _exitOnEnd;
-
-        Boolean _loopOnEnd = false;
-        if (call.getData().has("loopOnEnd")) {
-            _loopOnEnd = call.getBoolean("loopOnEnd");
-        }
-        if (!exitOnEnd) loopOnEnd = _loopOnEnd;
-
-        Boolean _showControls = true;
-        if (call.getData().has("showControls")) {
-            _showControls = call.getBoolean("showControls");
-        }
-        showControls = _showControls;
 
         String _displayMode = "all";
         if (call.getData().has("displayMode")) {
@@ -159,11 +138,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             subTitleOptions = call.getObject("subtitleOptions");
         }
 
-        JSObject _headers = new JSObject();
-        if (call.getData().has("headers")) {
-            _headers = call.getObject("headers");
-        }
-        headers = _headers;
         String _title = "";
         if (call.getData().has("title")) {
             _title = call.getString("title");
@@ -216,7 +190,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         Log.v(TAG, "display url: " + url);
         Log.v(TAG, "display subtitles: " + subtitles);
         Log.v(TAG, "display preferredLocale: " + preferredLocale);
-        Log.v(TAG, "headers: " + headers);
         Log.v(TAG, "title: " + title);
         Log.v(TAG, "smallTitle: " + smallTitle);
         Log.v(TAG, "chromecast: " + chromecast);
@@ -808,10 +781,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         fsFragment =
                 implementation.createFullScreenFragment(
                         videoUrl,
-                        videoRate,
-                        exitOnEnd,
-                        loopOnEnd,
-                        showControls,
                         displayMode,
                         subtitleItems,
                         preferredLocale,
