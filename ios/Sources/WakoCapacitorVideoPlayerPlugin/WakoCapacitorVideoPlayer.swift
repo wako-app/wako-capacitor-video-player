@@ -519,11 +519,19 @@ class PlayerViewController: UIViewController {
                 print("[WakoCapacitorVideoPlayer] Disabling subtitles")
                 self.mediaPlayer.currentVideoSubTitleIndex = -1
                 self.resetControlsTimer()
+                
+                // Get both subtitle and audio track info
                 let subtitleInfo = self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "subtitle")
+                let audioInfo = self.getCurrentAudioTrackInfo()
+                
+                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
-                    userInfo: ["subtitleTrack": subtitleInfo]
+                    userInfo: [
+                        "subtitleTrack": subtitleInfo,
+                        "audioTrack": audioInfo
+                    ]
                 )
             }
             disableAction.setValue(mediaPlayer.currentVideoSubTitleIndex == -1, forKey: "checked")
@@ -536,11 +544,19 @@ class PlayerViewController: UIViewController {
                 print("[WakoCapacitorVideoPlayer] Selecting subtitle track: \(trackName) at index: \(trackIndex)")
                 self.mediaPlayer.currentVideoSubTitleIndex = trackIndex.int32Value
                 self.resetControlsTimer()
+                
+                // Get both subtitle and audio track info
                 let subtitleInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, name: trackName, type: "subtitle")
+                let audioInfo = self.getCurrentAudioTrackInfo()
+                
+                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
-                    userInfo: ["subtitleTrack": subtitleInfo]
+                    userInfo: [
+                        "subtitleTrack": subtitleInfo,
+                        "audioTrack": audioInfo
+                    ]
                 )
             }
             action.setValue(mediaPlayer.currentVideoSubTitleIndex == trackIndex.int32Value, forKey: "checked")
@@ -576,11 +592,19 @@ class PlayerViewController: UIViewController {
                 print("[WakoCapacitorVideoPlayer] Disabling audio track")
                 self.mediaPlayer.currentAudioTrackIndex = -1
                 self.resetControlsTimer()
+                
+                // Get both audio and subtitle track info
                 let audioInfo = self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "audio")
+                let subtitleInfo = self.getCurrentSubtitleTrackInfo()
+                
+                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
-                    userInfo: ["audioTrack": audioInfo]
+                    userInfo: [
+                        "audioTrack": audioInfo,
+                        "subtitleTrack": subtitleInfo
+                    ]
                 )
             }
             disableAction.setValue(mediaPlayer.currentAudioTrackIndex == -1, forKey: "checked")
@@ -593,11 +617,19 @@ class PlayerViewController: UIViewController {
                 print("[WakoCapacitorVideoPlayer] Selecting audio track: \(trackName) at index: \(trackIndex)")
                 self.mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
                 self.resetControlsTimer()
+                
+                // Get both audio and subtitle track info
                 let audioInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, name: trackName, type: "audio")
+                let subtitleInfo = self.getCurrentSubtitleTrackInfo()
+                
+                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
-                    userInfo: ["audioTrack": audioInfo]
+                    userInfo: [
+                        "audioTrack": audioInfo,
+                        "subtitleTrack": subtitleInfo
+                    ]
                 )
             }
             action.setValue(mediaPlayer.currentAudioTrackIndex == trackIndex.int32Value, forKey: "checked")
@@ -813,7 +845,47 @@ class PlayerViewController: UIViewController {
         }
     }
     
-    // Ajouter un getter public pour startAtSec
+    // Helper method to get current audio track info
+    private func getCurrentAudioTrackInfo() -> [String: Any] {
+        if mediaPlayer.currentAudioTrackIndex == -1 {
+            return self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "audio")
+        }
+        
+        if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber],
+           let audioNames = mediaPlayer.audioTrackNames as? [String] {
+            let currentIndex = mediaPlayer.currentAudioTrackIndex
+            
+            for (index, trackIndex) in audioTracks.enumerated() where trackIndex.int32Value == currentIndex {
+                if index < audioNames.count, let trackName = audioNames[index] as? String {
+                    return self.trackInfo(forTrackIndex: currentIndex, name: trackName, type: "audio")
+                }
+            }
+        }
+        
+        return self.trackInfo(forTrackIndex: mediaPlayer.currentAudioTrackIndex, name: "Unknown", type: "audio")
+    }
+    
+    // Helper method to get current subtitle track info
+    private func getCurrentSubtitleTrackInfo() -> [String: Any] {
+        if mediaPlayer.currentVideoSubTitleIndex == -1 {
+            return self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "subtitle")
+        }
+        
+        if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber],
+           let subtitleNames = mediaPlayer.videoSubTitlesNames as? [String] {
+            let currentIndex = mediaPlayer.currentVideoSubTitleIndex
+            
+            for (index, trackIndex) in subtitleTracks.enumerated() where trackIndex.int32Value == currentIndex {
+                if index < subtitleNames.count, let trackName = subtitleNames[index] as? String {
+                    return self.trackInfo(forTrackIndex: currentIndex, name: trackName, type: "subtitle")
+                }
+            }
+        }
+        
+        return self.trackInfo(forTrackIndex: mediaPlayer.currentVideoSubTitleIndex, name: "Unknown", type: "subtitle")
+    }
+    
+    // Add a public getter for startAtSec
     public func getStartAtSec() -> Double {
         return startAtSec
     }
