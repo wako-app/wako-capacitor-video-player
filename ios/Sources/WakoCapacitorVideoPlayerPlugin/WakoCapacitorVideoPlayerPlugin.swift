@@ -96,7 +96,22 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        implementation.createPlayer { [weak self] success in
+        // Extract options from the call
+        let options: [String: Any] = [
+            "title": call.getString("title") ?? "",
+            "subtitleTrackId": call.getString("subtitleTrackId") ?? "",
+            "subtitleLocale": call.getString("subtitleLocale") ?? "",
+            "audioTrackId": call.getString("audioTrackId") ?? "",
+            "audioLocale": call.getString("audioLocale") ?? "",
+            "preferredLocale": call.getString("preferredLocale") ?? "",
+            "exitOnEnd":  true,
+            "loopOnEnd": false,
+            "showControls": true,
+            "displayMode": call.getString("displayMode") ?? "all",
+            "startAtSec": call.getDouble("startAtSec") ?? 0
+        ]
+        
+        implementation.createPlayer(options: options) { [weak self] success in
             guard let self = self else {
                 call.reject("Plugin instance lost")
                 return

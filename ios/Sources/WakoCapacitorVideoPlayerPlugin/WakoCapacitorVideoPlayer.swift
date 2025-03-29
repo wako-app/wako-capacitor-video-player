@@ -1,12 +1,13 @@
 import Foundation
 import MobileVLCKit
 import UIKit
+import AVKit
 
 public class WakoCapacitorVideoPlayer {
     private var mediaPlayer: VLCMediaPlayer?
     private var playerViewController: PlayerViewController?
 
-    public func createPlayer(completion: @escaping (Bool) -> Void) {
+    public func createPlayer(options: [String: Any], completion: @escaping (Bool) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 completion(false)
@@ -21,7 +22,7 @@ public class WakoCapacitorVideoPlayer {
             player.audio?.volume = 100
             
             self.mediaPlayer = player
-            self.playerViewController = PlayerViewController(mediaPlayer: player)
+            self.playerViewController = PlayerViewController(mediaPlayer: player, options: options)
             completion(true)
         }
     }
@@ -161,6 +162,7 @@ class PlayerViewController: UIViewController {
     private let mediaPlayer: VLCMediaPlayer
     private let videoView = UIView()
     private let controlsView = UIView()
+    private let titleLabel = UILabel()
     private let playPauseButton = UIButton(type: .system)
     private let forwardButton = UIButton(type: .system)
     private let backwardButton = UIButton(type: .system)
@@ -169,10 +171,40 @@ class PlayerViewController: UIViewController {
     private let subtitleButton = UIButton(type: .system)
     private let audioTrackButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
+    private let currentTimeLabel = UILabel()
+    private let totalTimeLabel = UILabel()
+    private let castButton = UIButton(type: .system)
     private var controlsTimer: Timer?
+    
+    // Configuration options
+    private var videoTitle: String?
+    private var subtitleTrackId: String?
+    private var subtitleLocale: String?
+    private var audioTrackId: String?
+    private var audioLocale: String?
+    private var preferredLocale: String?
+    private var exitOnEnd: Bool = true
+    private var loopOnEnd: Bool = false
+    private var showControls: Bool = true
+    private var displayMode: String = "all"
+    private var startAtSec: Double = 0
+    private var isAirPlayAvailable = false
+    private var airplayButton: UIButton?
 
-    init(mediaPlayer: VLCMediaPlayer) {
+    init(mediaPlayer: VLCMediaPlayer, options: [String: Any]) {
+        print("[WakoCapacitorVideoPlayer] Initializing player with options: \(options)")
         self.mediaPlayer = mediaPlayer
+        self.videoTitle = options["title"] as? String
+        self.subtitleTrackId = options["subtitleTrackId"] as? String
+        self.subtitleLocale = options["subtitleLocale"] as? String
+        self.audioTrackId = options["audioTrackId"] as? String
+        self.audioLocale = options["audioLocale"] as? String
+        self.preferredLocale = options["preferredLocale"] as? String
+        self.exitOnEnd = options["exitOnEnd"] as? Bool ?? true
+        self.loopOnEnd = options["loopOnEnd"] as? Bool ?? false
+        self.showControls = options["showControls"] as? Bool ?? true
+        self.displayMode = options["displayMode"] as? String ?? "all"
+        self.startAtSec = options["startAtSec"] as? Double ?? 0
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -183,6 +215,7 @@ class PlayerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        checkAirPlayAvailability()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.mediaPlayer.drawable = self.videoView
@@ -190,6 +223,18 @@ class PlayerViewController: UIViewController {
             self.updatePlayPauseButton()
             self.resetControlsTimer()
             self.loadingIndicator.startAnimating()
+            
+            // Configure initial state
+            self.controlsView.isHidden = !self.showControls
+            self.closeButton.isHidden = !self.showControls
+            self.titleLabel.isHidden = !self.showControls
+            self.castButton.isHidden = !self.isAirPlayAvailable
+            
+            // Set initial time if specified
+            if self.startAtSec > 0 {
+                print("[WakoCapacitorVideoPlayer] Setting initial time to: \(self.startAtSec)")
+                self.mediaPlayer.time = VLCTime(int: Int32(self.startAtSec * 1000))
+            }
         }
     }
 
@@ -218,6 +263,22 @@ class PlayerViewController: UIViewController {
             controlsView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             controlsView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             controlsView.heightAnchor.constraint(equalToConstant: 100)
+        ])
+
+        // Configure title label
+        titleLabel.text = videoTitle
+        titleLabel.textColor = .white
+        titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 1
+        titleLabel.lineBreakMode = .byTruncatingTail
+        view.addSubview(titleLabel)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            titleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
+            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            titleLabel.heightAnchor.constraint(equalToConstant: 30)
         ])
 
         playPauseButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
@@ -303,6 +364,28 @@ class PlayerViewController: UIViewController {
             seekBar.bottomAnchor.constraint(equalTo: playPauseButton.topAnchor, constant: -10)
         ])
 
+        // Configure current time label
+        currentTimeLabel.textColor = .white
+        currentTimeLabel.font = .systemFont(ofSize: 12)
+        currentTimeLabel.text = "00:00"
+        controlsView.addSubview(currentTimeLabel)
+        currentTimeLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            currentTimeLabel.leadingAnchor.constraint(equalTo: seekBar.leadingAnchor),
+            currentTimeLabel.topAnchor.constraint(equalTo: seekBar.bottomAnchor, constant: 2)
+        ])
+
+        // Configure total time label
+        totalTimeLabel.textColor = .white
+        totalTimeLabel.font = .systemFont(ofSize: 12)
+        totalTimeLabel.text = "00:00"
+        controlsView.addSubview(totalTimeLabel)
+        totalTimeLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            totalTimeLabel.trailingAnchor.constraint(equalTo: seekBar.trailingAnchor),
+            totalTimeLabel.topAnchor.constraint(equalTo: seekBar.bottomAnchor, constant: 2)
+        ])
+
         loadingIndicator.color = .white
         view.addSubview(loadingIndicator)
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -311,9 +394,63 @@ class PlayerViewController: UIViewController {
             loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
 
+        // Configure cast button
+        castButton.setImage(UIImage(systemName: "airplayvideo"), for: .normal)
+        castButton.tintColor = .white
+        castButton.addTarget(self, action: #selector(showCastOptions), for: .touchUpInside)
+        controlsView.addSubview(castButton)
+        castButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            castButton.leadingAnchor.constraint(equalTo: subtitleButton.trailingAnchor, constant: 20),
+            castButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
+            castButton.widthAnchor.constraint(equalToConstant: 50),
+            castButton.heightAnchor.constraint(equalToConstant: 50)
+        ])
+
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(toggleControlsVisibility))
         videoView.addGestureRecognizer(tapGesture)
         videoView.isUserInteractionEnabled = true
+
+        // Désactiver le bouton des sous-titres par défaut
+        subtitleButton.isEnabled = false
+    }
+
+    private func checkAirPlayAvailability() {
+        // Créer un AVPlayerViewController temporaire pour vérifier la disponibilité d'AirPlay
+        let tempPlayer = AVPlayerViewController()
+        tempPlayer.view.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        view.addSubview(tempPlayer.view)
+        
+        // Attendre que la vue soit chargée
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            
+            // Chercher le bouton AirPlay
+            if let airplayButton = self.findAirPlayButton(in: tempPlayer.view) {
+                self.isAirPlayAvailable = true
+                self.airplayButton = airplayButton
+                print("[WakoCapacitorVideoPlayer] AirPlay is available")
+            } else {
+                self.isAirPlayAvailable = false
+                print("[WakoCapacitorVideoPlayer] AirPlay is not available")
+            }
+            
+            // Nettoyer la vue temporaire
+            tempPlayer.view.removeFromSuperview()
+        }
+    }
+
+    private func findAirPlayButton(in view: UIView) -> UIButton? {
+        for subview in view.subviews {
+            if let button = subview as? UIButton,
+               button.image(for: .normal)?.accessibilityIdentifier == "airplay" {
+                return button
+            }
+            if let button = findAirPlayButton(in: subview) {
+                return button
+            }
+        }
+        return nil
     }
 
     @objc private func togglePlayPause() {
@@ -355,12 +492,34 @@ class PlayerViewController: UIViewController {
     }
 
     @objc private func showSubtitles() {
-        guard let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] else { return }
+        guard let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] else {
+            print("[WakoCapacitorVideoPlayer] No subtitles available")
+            return
+        }
+        
         let alert = UIAlertController(title: "Select Subtitle", message: nil, preferredStyle: .actionSheet)
+        
+        // Add "Off" option
+        let offAction = UIAlertAction(title: "Off", style: .default) { _ in
+            print("[WakoCapacitorVideoPlayer] Disabling subtitles")
+            self.mediaPlayer.currentVideoSubTitleIndex = -1
+            self.resetControlsTimer()
+            let subtitleInfo = self.trackInfo(forTrackIndex: -1, type: "subtitle")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("WakoPlayerTracksChanged"),
+                object: nil,
+                userInfo: ["subtitleTrack": subtitleInfo]
+            )
+        }
+        offAction.setValue(mediaPlayer.currentVideoSubTitleIndex == -1, forKey: "checked")
+        alert.addAction(offAction)
+        
         for (index, trackIndex) in subtitleTracks.enumerated() {
             let trackName = mediaPlayer.videoSubTitlesNames[index] as? String ?? "Subtitle \(index + 1)"
-            alert.addAction(UIAlertAction(title: trackName, style: .default) { _ in
+            let action = UIAlertAction(title: trackName, style: .default) { _ in
+                print("[WakoCapacitorVideoPlayer] Selecting subtitle track: \(trackName) at index: \(trackIndex)")
                 self.mediaPlayer.currentVideoSubTitleIndex = trackIndex.int32Value
+                print("[WakoCapacitorVideoPlayer] Current subtitle index set to: \(trackIndex.int32Value)")
                 self.resetControlsTimer()
                 let subtitleInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, type: "subtitle")
                 NotificationCenter.default.post(
@@ -368,8 +527,11 @@ class PlayerViewController: UIViewController {
                     object: nil,
                     userInfo: ["subtitleTrack": subtitleInfo]
                 )
-            })
+            }
+            action.setValue(mediaPlayer.currentVideoSubTitleIndex == trackIndex.int32Value, forKey: "checked")
+            alert.addAction(action)
         }
+        
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
     }
@@ -377,9 +539,10 @@ class PlayerViewController: UIViewController {
     @objc private func showAudioTracks() {
         guard let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] else { return }
         let alert = UIAlertController(title: "Select Audio Track", message: nil, preferredStyle: .actionSheet)
+        
         for (index, trackIndex) in audioTracks.enumerated() {
             let trackName = mediaPlayer.audioTrackNames[index] as? String ?? "Audio \(index + 1)"
-            alert.addAction(UIAlertAction(title: trackName, style: .default) { _ in
+            let action = UIAlertAction(title: trackName, style: .default) { _ in
                 self.mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
                 self.resetControlsTimer()
                 let audioInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, type: "audio")
@@ -388,16 +551,52 @@ class PlayerViewController: UIViewController {
                     object: nil,
                     userInfo: ["audioTrack": audioInfo]
                 )
-            })
+            }
+            action.setValue(mediaPlayer.currentAudioTrackIndex == trackIndex.int32Value, forKey: "checked")
+            alert.addAction(action)
         }
+        
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+
+    @objc private func showCastOptions() {
+        guard let airplayButton = airplayButton else { return }
+        
+        // Créer un menu contextuel pour le bouton AirPlay
+        let menu = UIMenuController.shared
+        let targetRect = airplayButton.convert(airplayButton.bounds, to: view)
+        
+        // Créer un menu personnalisé avec les options AirPlay
+        let menuItems = [
+            UIMenuItem(title: "AirPlay", action: #selector(showAirPlayMenu))
+        ]
+        menu.menuItems = menuItems
+        
+        // Afficher le menu
+        menu.showMenu(from: view, rect: targetRect)
+    }
+
+    @objc private func showAirPlayMenu() {
+        // Simuler un tap sur le bouton AirPlay natif
+        if let airplayButton = airplayButton {
+            airplayButton.sendActions(for: .touchUpInside)
+        }
     }
 
     @objc private func toggleControlsVisibility() {
         controlsView.isHidden = !controlsView.isHidden
         closeButton.isHidden = !closeButton.isHidden
+        titleLabel.isHidden = !titleLabel.isHidden
+        castButton.isHidden = !isAirPlayAvailable || controlsView.isHidden
         resetControlsTimer()
+    }
+    
+    @objc private func hideControls() {
+        controlsView.isHidden = true
+        closeButton.isHidden = true
+        titleLabel.isHidden = true
+        castButton.isHidden = true
     }
 
     private func resetControlsTimer() {
@@ -406,20 +605,158 @@ class PlayerViewController: UIViewController {
             controlsTimer = Timer.scheduledTimer(timeInterval: 3.0, target: self, selector: #selector(hideControls), userInfo: nil, repeats: false)
         }
     }
-    
-    @objc private func hideControls() {
-        controlsView.isHidden = true
-        closeButton.isHidden = true
-    }
 
     private func trackInfo(forTrackIndex index: Int32, type: String) -> [String: Any] {
+        print("[WakoCapacitorVideoPlayer] Getting track info for index: \(index), type: \(type)")
+        
+        // Si l'index est -1, c'est que les sous-titres sont désactivés
+        if index == -1 {
+            return [
+                "id": "-1",
+                "language": "",
+                "label": "Off"
+            ]
+        }
+        
         let names = type == "audio" ? mediaPlayer.audioTrackNames : mediaPlayer.videoSubTitlesNames
-        let label = (names[Int(index)] as? String) ?? "\(type) \(index)"
+        var label = "\(type) \(index)"
+        var languageCode = ""
+        
+        // Vérifier si l'index est valide
+        if let namesArray = names as? [String] {
+            let safeIndex = Int(index)
+            if safeIndex < namesArray.count {
+                let trackName = namesArray[safeIndex]
+                print("[WakoCapacitorVideoPlayer] Track name: \(trackName)")
+                // Essayer d'extraire le code de langue du nom de la piste
+                if let isoCode = extractLanguageCode(from: trackName) {
+                    languageCode = isoCode
+                    label = isoCode.uppercased()
+                    print("[WakoCapacitorVideoPlayer] Found language code: \(isoCode)")
+                } else {
+                    label = trackName
+                    print("[WakoCapacitorVideoPlayer] No language code found, using track name")
+                }
+            } else {
+                print("[WakoCapacitorVideoPlayer] Index out of bounds: \(safeIndex) >= \(namesArray.count)")
+            }
+        } else {
+            print("[WakoCapacitorVideoPlayer] Failed to get names array")
+        }
+        
         return [
             "id": "\(index)",
-            "language": label,
+            "language": languageCode,
             "label": label
         ]
+    }
+    
+    private func extractLanguageCode(from trackName: String) -> String? {
+        // Chercher un code ISO entre parenthèses
+        if let match = trackName.range(of: "\\(([a-z]{2,3})\\)", options: .regularExpression) {
+            return String(trackName[match]).trimmingCharacters(in: CharacterSet(charactersIn: "()"))
+        }
+        
+        // Chercher un code ISO au début suivi d'un tiret
+        if let match = trackName.range(of: "^([a-z]{2,3})\\s*-", options: .regularExpression) {
+            return String(trackName[match]).trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+        }
+        
+        // Chercher un code ISO isolé
+        if let match = trackName.range(of: "\\b([a-z]{2,3})\\b", options: .regularExpression) {
+            return String(trackName[match])
+        }
+        
+        return nil
+    }
+
+    private func selectTracks() {
+        print("[WakoCapacitorVideoPlayer] Selecting tracks with options:")
+        print("- subtitleTrackId: \(String(describing: subtitleTrackId))")
+        print("- subtitleLocale: \(String(describing: subtitleLocale))")
+        print("- audioTrackId: \(String(describing: audioTrackId))")
+        print("- audioLocale: \(String(describing: audioLocale))")
+        print("- preferredLocale: \(String(describing: preferredLocale))")
+
+        // Handle subtitle track selection
+        if let subtitleTrackId = subtitleTrackId {
+            print("[WakoCapacitorVideoPlayer] Attempting to select subtitle track by ID: \(subtitleTrackId)")
+            if subtitleTrackId == "#disabled" {
+                mediaPlayer.currentVideoSubTitleIndex = -1
+                print("[WakoCapacitorVideoPlayer] Disabled subtitles")
+            } else if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] {
+                for (index, trackIndex) in subtitleTracks.enumerated() {
+                    if let trackName = mediaPlayer.videoSubTitlesNames[index] as? String {
+                        print("[WakoCapacitorVideoPlayer] Checking subtitle track: \(trackName)")
+                        if trackName == subtitleTrackId {
+                            mediaPlayer.currentVideoSubTitleIndex = trackIndex.int32Value
+                            print("[WakoCapacitorVideoPlayer] Selected subtitle track: \(trackName)")
+                            break
+                        }
+                    }
+                }
+            }
+        } else if let subtitleLocale = subtitleLocale {
+            print("[WakoCapacitorVideoPlayer] Attempting to select subtitle track by locale: \(subtitleLocale)")
+            if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] {
+                for (index, trackIndex) in subtitleTracks.enumerated() {
+                    if let trackName = mediaPlayer.videoSubTitlesNames[index] as? String {
+                        print("[WakoCapacitorVideoPlayer] Checking subtitle track: \(trackName)")
+                        if trackName == subtitleLocale {
+                            mediaPlayer.currentVideoSubTitleIndex = trackIndex.int32Value
+                            print("[WakoCapacitorVideoPlayer] Selected subtitle track: \(trackName)")
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle audio track selection
+        if let audioTrackId = audioTrackId {
+            print("[WakoCapacitorVideoPlayer] Attempting to select audio track by ID: \(audioTrackId)")
+            if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] {
+                print("[WakoCapacitorVideoPlayer] Available audio tracks: \(audioTracks.count)")
+                for (index, trackIndex) in audioTracks.enumerated() {
+                    if let trackName = mediaPlayer.audioTrackNames[index] as? String {
+                        print("[WakoCapacitorVideoPlayer] Checking audio track: \(trackName)")
+                        if trackName == audioTrackId {
+                            mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
+                            print("[WakoCapacitorVideoPlayer] Selected audio track: \(trackName)")
+                            break
+                        }
+                    }
+                }
+            }
+        } else if let audioLocale = audioLocale {
+            print("[WakoCapacitorVideoPlayer] Attempting to select audio track by locale: \(audioLocale)")
+            if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] {
+                for (index, trackIndex) in audioTracks.enumerated() {
+                    if let trackName = mediaPlayer.audioTrackNames[index] as? String {
+                        print("[WakoCapacitorVideoPlayer] Checking audio track: \(trackName)")
+                        if trackName == audioLocale {
+                            mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
+                            print("[WakoCapacitorVideoPlayer] Selected audio track: \(trackName)")
+                            break
+                        }
+                    }
+                }
+            }
+        } else if let preferredLocale = preferredLocale {
+            print("[WakoCapacitorVideoPlayer] Attempting to select audio track by preferred locale: \(preferredLocale)")
+            if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] {
+                for (index, trackIndex) in audioTracks.enumerated() {
+                    if let trackName = mediaPlayer.audioTrackNames[index] as? String {
+                        print("[WakoCapacitorVideoPlayer] Checking audio track: \(trackName)")
+                        if trackName == preferredLocale {
+                            mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
+                            print("[WakoCapacitorVideoPlayer] Selected audio track: \(trackName)")
+                            break
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -431,6 +768,17 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                 guard let self = self else { return }
                 self.seekBar.maximumValue = Float(duration) / 1000
                 self.seekBar.value = Float(self.mediaPlayer.time.value?.intValue ?? 0) / 1000
+                
+                // Update time labels
+                let currentTime = self.mediaPlayer.time.value?.intValue ?? 0
+                let currentMinutes = currentTime / 60000
+                let currentSeconds = (currentTime % 60000) / 1000
+                self.currentTimeLabel.text = String(format: "%02d:%02d", currentMinutes, currentSeconds)
+                
+                let totalMinutes = duration / 60000
+                let totalSeconds = (duration % 60000) / 1000
+                self.totalTimeLabel.text = String(format: "%02d:%02d", totalMinutes, totalSeconds)
+                
                 if self.mediaPlayer.isPlaying && self.loadingIndicator.isAnimating {
                     self.loadingIndicator.stopAnimating()
                 }
@@ -449,7 +797,7 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
     }
 
     func mediaPlayerStateChanged(_ aNotification: Notification) {
-        // Utiliser performSelector pour exécuter le code sur le thread principal
+        print("[WakoCapacitorVideoPlayer] State changed to: \(self.mediaPlayer.state.rawValue)")
         self.performSelector(onMainThread: #selector(handleStateChange), with: nil, waitUntilDone: false)
     }
     
@@ -461,13 +809,34 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
             self.loadingIndicator.startAnimating()
         case .playing:
             self.loadingIndicator.stopAnimating()
+            // Attendre un court instant pour s'assurer que les pistes sont chargées
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                self.selectTracks()
+            }
+            // Set initial time when playback starts if specified
+            if self.startAtSec > 0 {
+                print("[WakoCapacitorVideoPlayer] Setting initial time to: \(self.startAtSec)")
+                self.mediaPlayer.time = VLCTime(int: Int32(self.startAtSec * 1000))
+            }
+            // Vérifier la disponibilité des sous-titres
+            if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber], !subtitleTracks.isEmpty {
+                subtitleButton.isEnabled = true
+            } else {
+                subtitleButton.isEnabled = false
+            }
         case .error:
             self.loadingIndicator.stopAnimating()
             self.dismiss(animated: true)
             print("[WakoCapacitorVideoPlayer] Playback error occurred")
         case .ended:
             self.loadingIndicator.stopAnimating()
-            self.dismiss(animated: true)
+            if loopOnEnd {
+                mediaPlayer.time = VLCTime(int: 0)
+                mediaPlayer.play()
+            } else if exitOnEnd {
+                self.dismiss(animated: true)
+            }
         default:
             break
         }
