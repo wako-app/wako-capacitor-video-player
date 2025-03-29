@@ -249,6 +249,12 @@ class PlayerViewController: UIViewController {
         titleLabel.isHidden = false
         castButton.isHidden = !isAirPlayAvailable
         
+        // Ensure full opacity for all visible controls
+        controlsView.alpha = 1.0
+        closeButton.alpha = 1.0
+        titleLabel.alpha = 1.0
+        castButton.alpha = isAirPlayAvailable ? 1.0 : 0.0
+        
         // Start timer to auto-hide controls
         resetControlsTimer()
         
@@ -683,23 +689,60 @@ class PlayerViewController: UIViewController {
     @objc private func toggleControlsVisibility() {
         let shouldShow = controlsView.isHidden
         
-        // Update UI based on new state
-        controlsView.isHidden = !shouldShow
-        closeButton.isHidden = !shouldShow
-        titleLabel.isHidden = !shouldShow
-        castButton.isHidden = !isAirPlayAvailable || !shouldShow
-        
-        // Reset timer if controls are now visible
         if shouldShow {
+            // Préparer les vues pour le fade in
+            controlsView.alpha = 0
+            closeButton.alpha = 0
+            titleLabel.alpha = 0
+            castButton.alpha = 0
+            
+            // Rendre les vues visibles mais transparentes
+            controlsView.isHidden = false
+            closeButton.isHidden = false
+            titleLabel.isHidden = false
+            castButton.isHidden = !isAirPlayAvailable
+            
+            // Animation de fade in
+            UIView.animate(withDuration: 0.3, animations: {
+                self.controlsView.alpha = 1
+                self.closeButton.alpha = 1
+                self.titleLabel.alpha = 1
+                self.castButton.alpha = self.isAirPlayAvailable ? 1 : 0
+            })
+            
+            // Reset timer
             resetControlsTimer()
+        } else {
+            // Animation de fade out
+            UIView.animate(withDuration: 0.3, animations: {
+                self.controlsView.alpha = 0
+                self.closeButton.alpha = 0
+                self.titleLabel.alpha = 0
+                self.castButton.alpha = 0
+            }, completion: { _ in
+                // Masquer les vues après la fin de l'animation
+                self.controlsView.isHidden = true
+                self.closeButton.isHidden = true
+                self.titleLabel.isHidden = true
+                self.castButton.isHidden = true
+            })
         }
     }
     
     @objc private func hideControls() {
-        controlsView.isHidden = true
-        closeButton.isHidden = true
-        titleLabel.isHidden = true
-        castButton.isHidden = true
+        // Animation de fade out
+        UIView.animate(withDuration: 0.3, animations: {
+            self.controlsView.alpha = 0
+            self.closeButton.alpha = 0
+            self.titleLabel.alpha = 0
+            self.castButton.alpha = 0
+        }, completion: { _ in
+            // Masquer les vues après la fin de l'animation
+            self.controlsView.isHidden = true
+            self.closeButton.isHidden = true
+            self.titleLabel.isHidden = true
+            self.castButton.isHidden = true
+        })
     }
 
     private func resetControlsTimer() {
