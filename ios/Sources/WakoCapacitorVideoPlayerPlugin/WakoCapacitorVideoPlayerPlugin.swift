@@ -97,7 +97,7 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         // Extract options from the call
-        let options: [String: Any] = [
+        var options: [String: Any] = [
             "title": call.getString("title") ?? "",
             "subtitleTrackId": call.getString("subtitleTrackId") ?? "",
             "subtitleLocale": call.getString("subtitleLocale") ?? "",
@@ -110,6 +110,12 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             "displayMode": call.getString("displayMode") ?? "all",
             "startAtSec": call.getDouble("startAtSec") ?? 0
         ]
+        
+        // Extract external subtitles from the call
+        if let subtitles = call.getArray("subtitles") as? [[String: Any]] {
+            print("[WakoCapacitorVideoPlayerPlugin] Found \(subtitles.count) external subtitles")
+            options["subtitles"] = subtitles
+        }
         
         implementation.createPlayer(options: options) { [weak self] success in
             guard let self = self else {

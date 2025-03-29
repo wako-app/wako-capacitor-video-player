@@ -14,9 +14,28 @@ public class WakoCapacitorVideoPlayer {
                 return
             }
             
+            print("[WakoCapacitorVideoPlayer] createPlayer called with options: \(options)")
+            
+            if let subtitles = options["subtitles"] as? [[String: Any]] {
+                print("[WakoCapacitorVideoPlayer] Found \(subtitles.count) external subtitles:")
+                for (index, subtitle) in subtitles.enumerated() {
+                    print("[WakoCapacitorVideoPlayer] Subtitle \(index + 1):")
+                    if let url = subtitle["url"] as? String {
+                        print("   - URL: \(url)")
+                    }
+                    if let name = subtitle["name"] as? String {
+                        print("   - Name: \(name)")
+                    }
+                    if let lang = subtitle["lang"] as? String {
+                        print("   - Language: \(lang)")
+                    }
+                }
+            } else {
+                print("[WakoCapacitorVideoPlayer] No external subtitles found in options")
+            }
+            
             let player = VLCMediaPlayer()
             player.drawable = nil
-           // player.audio?.volume = 100
             
             self.mediaPlayer = player
             self.playerViewController = PlayerViewController(mediaPlayer: player, options: options)
@@ -46,20 +65,41 @@ public class WakoCapacitorVideoPlayer {
         // If startTime is defined, configure options for VLC
         let startTime = playerViewController.getStartAtSec()
         if startTime > 0 {
-            // The "start-time" option is in milliseconds
+            // The "start-time" option is in seconds
             print("[WakoCapacitorVideoPlayer] Setting start-time option: \(startTime) seconds")
-            options["start-time"] = NSNumber(value: Int32(startTime))
+            options["start-time"] = NSNumber(value: Double(startTime))
         }
         
         // Configure subtitle appearance
         options["sub-text-scale"] = NSNumber(value: 0.6) // 60% of default size
-        // Other possible options:
-        // options["sub-text-color"] = NSNumber(value: 16777215)  // White in decimal (FFFFFF)
-        // options["sub-text-font"] = "Helvetica"
         
-        // Apply all options at once
+        // Start with subtitles disabled until the user selects one
+        options["sub-track"] = NSNumber(value: -1)
+        
+        // Network caching options
+        options["network-caching"] = NSNumber(value: 2000) // 2 seconds
+        options["file-caching"] = NSNumber(value: 1500)
+        options["live-caching"] = NSNumber(value: 1500)
+        
+        // Log external subtitles information
+        if let externalSubtitles = playerViewController.getExternalSubtitles(), !externalSubtitles.isEmpty {
+            print("[WakoCapacitorVideoPlayer] Found \(externalSubtitles.count) external subtitles to add after playback starts")
+            
+            for (index, subtitle) in externalSubtitles.enumerated() {
+                if let urlString = subtitle["url"] as? String {
+                    let name = subtitle["name"] as? String ?? "Subtitle \(index + 1)"
+                    let lang = subtitle["lang"] as? String ?? ""
+                    print("[WakoCapacitorVideoPlayer] Subtitle \(index + 1): \(name) [\(lang)] - \(urlString)")
+                }
+            }
+        } else {
+            print("[WakoCapacitorVideoPlayer] No external subtitles to add")
+        }
+        
+        // Apply all options to the media
         media.addOptions(options)
         
+        // Set the media to the player
         mediaPlayer.media = media
         
         DispatchQueue.main.async {
@@ -193,10 +233,9 @@ class PlayerViewController: UIViewController {
     private var controlsTimer: Timer?
     private var isControlsVisible = true
     
-    // Double tap indicators
     private var rewindIndicator: UIView?
     private var forwardIndicator: UIView?
-    private let seekDuration: Float = 10.0 // 10 seconds for seeking
+    private let seekDuration: Float = 10.0
 
     private var videoTitle: String?
     private var subtitleTrackId: String?
@@ -211,6 +250,8 @@ class PlayerViewController: UIViewController {
     private var startAtSec: Double = 0
     private var isAirPlayAvailable = false
     private var airplayButton: UIButton?
+    
+    private var externalSubtitles: [[String: Any]]?
 
     init(mediaPlayer: VLCMediaPlayer, options: [String: Any]) {
         print("[WakoCapacitorVideoPlayer] Initializing player with options: \(options)")
@@ -226,6 +267,12 @@ class PlayerViewController: UIViewController {
         self.showControls = options["showControls"] as? Bool ?? true
         self.displayMode = options["displayMode"] as? String ?? "all"
         self.startAtSec = options["startAtSec"] as? Double ?? 0
+        
+        self.externalSubtitles = options["subtitles"] as? [[String: Any]]
+        if let subs = self.externalSubtitles {
+            print("[WakoCapacitorVideoPlayer] External subtitles provided: \(subs.count)")
+        }
+        
         super.init(nibName: nil, bundle: nil)
         self.rewindIndicator = nil
         self.forwardIndicator = nil
@@ -241,22 +288,18 @@ class PlayerViewController: UIViewController {
         setupUI()
         setupMediaPlayer()
         
-        // Initialize controls as visible and start hide timer
         controlsView.isHidden = false
         closeButton.isHidden = false
         titleLabel.isHidden = false
         castButton.isHidden = !isAirPlayAvailable
         
-        // Ensure full opacity for all visible controls
         controlsView.alpha = 1.0
         closeButton.alpha = 1.0
         titleLabel.alpha = 1.0
         castButton.alpha = isAirPlayAvailable ? 1.0 : 0.0
         
-        // Start timer to auto-hide controls
         resetControlsTimer()
         
-        // Check AirPlay availability
         checkAirPlayAvailability()
     }
 
@@ -277,10 +320,7 @@ class PlayerViewController: UIViewController {
             videoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         
-        // Setup double tap indicators
         setupDoubleTapIndicators()
-        
-        // Setup double tap gesture recognizers
         setupDoubleTapGestureRecognizers()
 
         controlsView.backgroundColor = .black.withAlphaComponent(0.7)
@@ -411,7 +451,6 @@ class PlayerViewController: UIViewController {
             castButton.heightAnchor.constraint(equalToConstant: 50)
         ])
         
-        // Disable subtitle button until tracks are available
         subtitleButton.isEnabled = false
     }
 
@@ -487,60 +526,68 @@ class PlayerViewController: UIViewController {
 
     @objc private func showSubtitles() {
         guard let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber],
-              let subtitleNames = mediaPlayer.videoSubTitlesNames as? [String],
-              subtitleTracks.count == subtitleNames.count else {
+              let subtitleNames = mediaPlayer.videoSubTitlesNames as? [String] else {
             print("[WakoCapacitorVideoPlayer] No subtitles available or mismatch in data")
             return
         }
         
+        // Log all available subtitle tracks for debugging
+        print("[WakoCapacitorVideoPlayer] Available subtitle tracks: \(subtitleTracks.count)")
+        for (i, track) in subtitleTracks.enumerated() {
+            if i < subtitleNames.count {
+                print("[WakoCapacitorVideoPlayer] Track \(i): ID=\(track), Name='\(subtitleNames[i])'")
+            }
+        }
+        
+        // Create alert controller
         let alert = UIAlertController(title: "Select Subtitle", message: nil, preferredStyle: .actionSheet)
         
-        // Check if "Disable" already exists in the list
-        var hasDisableOption = false
-        for name in subtitleNames {
-            if name.lowercased() == "disable" || name.lowercased() == "disabled" {
-                hasDisableOption = true
-                break
-            }
+        // Add the Disable option first
+        let disableAction = UIAlertAction(title: "Disable", style: .default) { _ in
+            print("[WakoCapacitorVideoPlayer] Disabling subtitles")
+            self.mediaPlayer.currentVideoSubTitleIndex = -1
+            self.resetControlsTimer()
+            
+            let subtitleInfo = self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "subtitle")
+            let audioInfo = self.getCurrentAudioTrackInfo()
+            
+            NotificationCenter.default.post(
+                name: NSNotification.Name("WakoPlayerTracksChanged"),
+                object: nil,
+                userInfo: [
+                    "subtitleTrack": subtitleInfo,
+                    "audioTrack": audioInfo
+                ]
+            )
         }
+        disableAction.setValue(mediaPlayer.currentVideoSubTitleIndex == -1, forKey: "checked")
+        alert.addAction(disableAction)
         
-        // Add the "Disable" option at the beginning if it doesn't exist
-        if !hasDisableOption {
-            let disableAction = UIAlertAction(title: "Disable", style: .default) { _ in
-                print("[WakoCapacitorVideoPlayer] Disabling subtitles")
-                self.mediaPlayer.currentVideoSubTitleIndex = -1
-                self.resetControlsTimer()
-                
-                // Get both subtitle and audio track info
-                let subtitleInfo = self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "subtitle")
-                let audioInfo = self.getCurrentAudioTrackInfo()
-                
-                // Send both in notification
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("WakoPlayerTracksChanged"),
-                    object: nil,
-                    userInfo: [
-                        "subtitleTrack": subtitleInfo,
-                        "audioTrack": audioInfo
-                    ]
-                )
+        // Create a dictionary to track added internal subtitle tracks by their name
+        var addedSubtitleNames = Set<String>()
+        
+        // PHASE 1: Add all internal subtitle tracks first
+        let processedTracks = min(subtitleTracks.count, subtitleNames.count)
+        for index in 0..<processedTracks {
+            let trackIndex = subtitleTracks[index]
+            let originalName = subtitleNames[index]
+            
+            // Skip any "Disable" internal options, since we added our own already
+            if originalName.lowercased() == "disable" || originalName.lowercased() == "disabled" || originalName == "Off" {
+                continue
             }
-            disableAction.setValue(mediaPlayer.currentVideoSubTitleIndex == -1, forKey: "checked")
-            alert.addAction(disableAction)
-        }
-        
-        for (index, trackIndex) in subtitleTracks.enumerated() {
-            let trackName = subtitleNames[index]
-            let action = UIAlertAction(title: trackName, style: .default) { _ in
-                print("[WakoCapacitorVideoPlayer] Selecting subtitle track: \(trackName) at index: \(trackIndex)")
+            
+            // Track this subtitle name to avoid duplicates later
+            addedSubtitleNames.insert(originalName)
+            
+            let action = UIAlertAction(title: originalName, style: .default) { _ in
+                print("[WakoCapacitorVideoPlayer] Selecting subtitle track: \(originalName) at index: \(trackIndex)")
                 self.mediaPlayer.currentVideoSubTitleIndex = trackIndex.int32Value
                 self.resetControlsTimer()
                 
-                // Get both subtitle and audio track info
-                let subtitleInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, name: trackName, type: "subtitle")
+                let subtitleInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, name: originalName, type: "subtitle")
                 let audioInfo = self.getCurrentAudioTrackInfo()
                 
-                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
@@ -554,8 +601,145 @@ class PlayerViewController: UIViewController {
             alert.addAction(action)
         }
         
+        // PHASE 2: Add external subtitles explicitly if they are not already visible 
+        // in the internal subtitle tracks
+        if let externalSubs = externalSubtitles, !externalSubs.isEmpty {
+            print("[WakoCapacitorVideoPlayer] Adding external subtitles to menu: \(externalSubs.count)")
+            
+            // Track seen URLs to avoid exact duplicates
+            var addedUrls = Set<String>()
+            
+            for (index, subtitle) in externalSubs.enumerated() {
+                if let urlString = subtitle["url"] as? String, 
+                   !urlString.isEmpty,
+                   !addedUrls.contains(urlString) {
+                   
+                    let name = subtitle["name"] as? String ?? "Subtitle \(index + 1)"
+                    let lang = subtitle["lang"] as? String ?? ""
+                    let displayName = !lang.isEmpty ? "\(name) [\(lang)]" : name
+                    
+                    // Check if we already have this specific name in the list
+                    if addedSubtitleNames.contains(displayName) {
+                        print("[WakoCapacitorVideoPlayer] Skipping external subtitle - name already in list: \(displayName)")
+                        continue
+                    }
+                    
+                    // Check if this URL appears as a subtitle name (for VLC-added subtitles)
+                    var skipThisSubtitle = false
+                    for subtitleName in subtitleNames {
+                        if subtitleName.contains(urlString) {
+                            skipThisSubtitle = true
+                            print("[WakoCapacitorVideoPlayer] Skipping external subtitle as its URL appears in internal list: \(urlString)")
+                            break
+                        }
+                    }
+                    
+                    if skipThisSubtitle {
+                        continue
+                    }
+                    
+                    print("[WakoCapacitorVideoPlayer] Adding external subtitle to menu: \(displayName)")
+                    
+                    // Add URL to our tracking set 
+                    addedUrls.insert(urlString)
+                    
+                    // Create action for this subtitle - note we'll need to add it first
+                    let action = UIAlertAction(title: displayName, style: .default) { _ in
+                        print("[WakoCapacitorVideoPlayer] Selected external subtitle: \(displayName)")
+                        
+                        // Create URL from string
+                        guard let url = URL(string: urlString) else {
+                            print("[WakoCapacitorVideoPlayer] Invalid URL for external subtitle: \(urlString)")
+                            return
+                        }
+                        
+                        // Add subtitle as media slave
+                        let result = self.mediaPlayer.addPlaybackSlave(url, type: .subtitle, enforce: true)
+                        let success = result != 0
+                        
+                        print("[WakoCapacitorVideoPlayer] External subtitle added on demand: \(success ? "SUCCESS" : "FAILED") (result=\(result))")
+                        
+                        if success {
+                            // After a delay to let VLC process the subtitle
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                // Check if subtitle was added and select it
+                                if let tracks = self.mediaPlayer.videoSubTitlesIndexes as? [NSNumber], 
+                                   let names = self.mediaPlayer.videoSubTitlesNames as? [String] {
+                                    // Find the newly added subtitle
+                                    for (i, trackIdx) in tracks.enumerated() {
+                                        if i < names.count {
+                                            let trackName = names[i]
+                                            // This is a bit of a guess - the last added subtitle might be the one
+                                            // Or a track containing the URL or matching our display name
+                                            if trackName.contains(urlString) || trackName == displayName || i == tracks.count - 1 {
+                                                print("[WakoCapacitorVideoPlayer] Selecting newly added subtitle track: \(trackName)")
+                                                self.mediaPlayer.currentVideoSubTitleIndex = trackIdx.int32Value
+                                                
+                                                let subtitleInfo = self.trackInfo(forTrackIndex: trackIdx.int32Value, name: displayName, type: "subtitle")
+                                                let audioInfo = self.getCurrentAudioTrackInfo()
+                                                
+                                                NotificationCenter.default.post(
+                                                    name: NSNotification.Name("WakoPlayerTracksChanged"),
+                                                    object: nil,
+                                                    userInfo: [
+                                                        "subtitleTrack": subtitleInfo,
+                                                        "audioTrack": audioInfo
+                                                    ]
+                                                )
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        self.resetControlsTimer()
+                    }
+                    alert.addAction(action)
+                }
+            }
+        }
+        
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+
+    // Helper function to get human-readable language name from code
+    private func getLanguageName(from code: String) -> String? {
+        let languageMap = [
+            "en": "English",
+            "fr": "French",
+            "es": "Spanish",
+            "de": "German",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "ja": "Japanese",
+            "zh": "Chinese",
+            "ko": "Korean",
+            "ar": "Arabic",
+            "hi": "Hindi",
+            "tr": "Turkish",
+            "nl": "Dutch",
+            "sv": "Swedish",
+            "no": "Norwegian",
+            "da": "Danish",
+            "fi": "Finnish",
+            "pl": "Polish",
+            "cs": "Czech",
+            "hu": "Hungarian",
+            "el": "Greek",
+            "he": "Hebrew",
+            "th": "Thai",
+            "fre": "French",
+            "ger": "German",
+            "ita": "Italian",
+            "spa": "Spanish",
+            "eng": "English"
+        ]
+        
+        return languageMap[code.lowercased()]
     }
 
     @objc private func showAudioTracks() {
@@ -568,7 +752,6 @@ class PlayerViewController: UIViewController {
         
         let alert = UIAlertController(title: "Select Audio Track", message: nil, preferredStyle: .actionSheet)
         
-        // Check if "Disable" already exists in the list
         var hasDisableOption = false
         for name in audioNames {
             if name.lowercased() == "disable" || name.lowercased() == "disabled" {
@@ -577,18 +760,15 @@ class PlayerViewController: UIViewController {
             }
         }
         
-        // Add the "Disable" option at the beginning if it doesn't exist
         if !hasDisableOption {
             let disableAction = UIAlertAction(title: "Disable", style: .default) { _ in
                 print("[WakoCapacitorVideoPlayer] Disabling audio track")
                 self.mediaPlayer.currentAudioTrackIndex = -1
                 self.resetControlsTimer()
                 
-                // Get both audio and subtitle track info
                 let audioInfo = self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "audio")
                 let subtitleInfo = self.getCurrentSubtitleTrackInfo()
                 
-                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
@@ -609,11 +789,9 @@ class PlayerViewController: UIViewController {
                 self.mediaPlayer.currentAudioTrackIndex = trackIndex.int32Value
                 self.resetControlsTimer()
                 
-                // Get both audio and subtitle track info
                 let audioInfo = self.trackInfo(forTrackIndex: trackIndex.int32Value, name: trackName, type: "audio")
                 let subtitleInfo = self.getCurrentSubtitleTrackInfo()
                 
-                // Send both in notification
                 NotificationCenter.default.post(
                     name: NSNotification.Name("WakoPlayerTracksChanged"),
                     object: nil,
@@ -655,19 +833,16 @@ class PlayerViewController: UIViewController {
         let shouldShow = controlsView.isHidden
         
         if shouldShow {
-            // Préparer les vues pour le fade in
             controlsView.alpha = 0
             closeButton.alpha = 0
             titleLabel.alpha = 0
             castButton.alpha = 0
             
-            // Rendre les vues visibles mais transparentes
             controlsView.isHidden = false
             closeButton.isHidden = false
             titleLabel.isHidden = false
             castButton.isHidden = !isAirPlayAvailable
             
-            // Animation de fade in
             UIView.animate(withDuration: 0.3, animations: {
                 self.controlsView.alpha = 1
                 self.closeButton.alpha = 1
@@ -675,17 +850,14 @@ class PlayerViewController: UIViewController {
                 self.castButton.alpha = self.isAirPlayAvailable ? 1 : 0
             })
             
-            // Reset timer
             resetControlsTimer()
         } else {
-            // Animation de fade out
             UIView.animate(withDuration: 0.3, animations: {
                 self.controlsView.alpha = 0
                 self.closeButton.alpha = 0
                 self.titleLabel.alpha = 0
                 self.castButton.alpha = 0
             }, completion: { _ in
-                // Masquer les vues après la fin de l'animation
                 self.controlsView.isHidden = true
                 self.closeButton.isHidden = true
                 self.titleLabel.isHidden = true
@@ -695,14 +867,12 @@ class PlayerViewController: UIViewController {
     }
     
     @objc private func hideControls() {
-        // Animation de fade out
         UIView.animate(withDuration: 0.3, animations: {
             self.controlsView.alpha = 0
             self.closeButton.alpha = 0
             self.titleLabel.alpha = 0
             self.castButton.alpha = 0
         }, completion: { _ in
-            // Masquer les vues après la fin de l'animation
             self.controlsView.isHidden = true
             self.closeButton.isHidden = true
             self.titleLabel.isHidden = true
@@ -736,58 +906,47 @@ class PlayerViewController: UIViewController {
         ]
     }
     
-    private func extractLanguageCode(from trackName: String) -> String? {
-        // Dictionary to convert language names to ISO codes
-        let languageMap: [String: String] = [
-            "english": "en",
-            "italian": "it",
-            "french": "fr",
-            "spanish": "es",
-            "german": "de",
-            "japanese": "ja",
-            "korean": "ko",
-            "chinese": "zh",
-            "russian": "ru",
-            "portuguese": "pt",
-            "arabic": "ar",
-            "dutch": "nl",
-            "turkish": "tr",
-            "hindi": "hi",
-            "thai": "th"
-        ]
-        
-        // Patterns to extract ISO codes or language names
+    private func extractLanguageCode(from string: String) -> String? {
+        // Common language code patterns
         let patterns = [
-            "\\[([A-Za-z]+)\\]",            // Ex: [ENGLISH], [Italian]
-            "\\(([a-z]{2,3})\\)",           // Ex: (en), (eng)
-            "^([a-z]{2,3})\\s*-",           // Ex: en - English
-            "\\b([a-z]{2,3})\\b"            // Ex: en isolé
+            // ISO 639-1 two-letter codes
+            "[^a-zA-Z](en|fr|es|de|it|pt|ru|ja|zh|ko|ar|hi|tr|nl)[^a-zA-Z]",
+            // Full language names
+            "(english|french|spanish|german|italian|portuguese|russian|japanese|chinese|korean|arabic|hindi|turkish|dutch)"
         ]
         
         for pattern in patterns {
-            if let match = trackName.range(of: pattern, options: .regularExpression) {
-                let extracted = String(trackName[match]).trimmingCharacters(in: CharacterSet(charactersIn: "[]() -"))
-                let code = extracted.lowercased()
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let nsString = string as NSString
+                let range = NSRange(location: 0, length: nsString.length)
                 
-                // Check if it's a direct ISO code
-                if (2...3).contains(code.count) && code.allSatisfy({ $0.isLetter }) {
-                    print("[WakoCapacitorVideoPlayer] Extracted language code: \(code) from \(trackName)")
-                    return code
-                }
-                
-                // If it's a language name (ex. ENGLISH), convert to ISO code
-                if let languageCode = languageMap[code] {
-                    print("[WakoCapacitorVideoPlayer] Mapped language code: \(languageCode) from \(trackName)")
-                    return languageCode
+                if let match = regex.firstMatch(in: string, options: [], range: range) {
+                    let matchedString = nsString.substring(with: match.range)
+                    // Clean up the matched string (remove non-letter characters)
+                    let cleaned = matchedString.lowercased().trimmingCharacters(in: CharacterSet.letters.inverted)
+                    return cleaned
                 }
             }
         }
         
-        print("[WakoCapacitorVideoPlayer] No valid ISO code found in: \(trackName)")
+        // No match found using patterns, try to extract based on common language codes in the string
+        let lowerString = string.lowercased()
+        let languageCodes = ["en", "fr", "es", "de", "it", "pt", "ru", "ja", "zh", "ko", "ar", "hi", "tr", "nl"]
+        
+        for code in languageCodes {
+            if lowerString.contains(code) {
+                return code
+            }
+        }
+        
+        // Extract first 2 letters if looks like a language code
+        if string.count >= 2 && string.allSatisfy({ $0.isLetter }) {
+            return String(string.prefix(2)).lowercased()
+        }
+        
         return nil
     }
 
-    // Method to select audio and subtitle tracks
     private func selectTracks() {
         print("[WakoCapacitorVideoPlayer] Selecting tracks with options:")
         print("- subtitleTrackId: \(String(describing: subtitleTrackId))")
@@ -796,7 +955,6 @@ class PlayerViewController: UIViewController {
         print("- audioLocale: \(String(describing: audioLocale))")
         print("- preferredLocale: \(String(describing: preferredLocale))")
 
-        // Subtitle selection
         if let subtitleTrackId = subtitleTrackId {
             print("[WakoCapacitorVideoPlayer] Attempting to select subtitle track by ID: \(subtitleTrackId)")
             if subtitleTrackId == "off" || subtitleTrackId == "#disabled" {
@@ -830,7 +988,6 @@ class PlayerViewController: UIViewController {
             }
         }
 
-        // Audio selection
         if let audioTrackId = audioTrackId {
             print("[WakoCapacitorVideoPlayer] Attempting to select audio track by ID: \(audioTrackId)")
             if audioTrackId == "off" || audioTrackId == "#disabled" {
@@ -880,7 +1037,6 @@ class PlayerViewController: UIViewController {
         }
     }
     
-    // Helper method to get current audio track info
     private func getCurrentAudioTrackInfo() -> [String: Any] {
         if mediaPlayer.currentAudioTrackIndex == -1 {
             return self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "audio")
@@ -900,7 +1056,6 @@ class PlayerViewController: UIViewController {
         return self.trackInfo(forTrackIndex: mediaPlayer.currentAudioTrackIndex, name: "Unknown", type: "audio")
     }
     
-    // Helper method to get current subtitle track info
     private func getCurrentSubtitleTrackInfo() -> [String: Any] {
         if mediaPlayer.currentVideoSubTitleIndex == -1 {
             return self.trackInfo(forTrackIndex: -1, name: "Disabled", type: "subtitle")
@@ -920,14 +1075,93 @@ class PlayerViewController: UIViewController {
         return self.trackInfo(forTrackIndex: mediaPlayer.currentVideoSubTitleIndex, name: "Unknown", type: "subtitle")
     }
     
-    // Add a public getter for startAtSec
     public func getStartAtSec() -> Double {
         return startAtSec
     }
+    
+    public func getExternalSubtitles() -> [[String: Any]]? {
+        return externalSubtitles
+    }
 
-    // Configure the double tap indicators (visual feedback when double tapping)
+    private func addSubtitlesAfterPlayback() {
+        guard let externalSubs = externalSubtitles, !externalSubs.isEmpty else {
+            print("[WakoCapacitorVideoPlayer] No external subtitles to add")
+            return
+        }
+        
+        // First log any internal subtitle tracks that might be present before adding external ones
+        if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber],
+           let subtitleNames = mediaPlayer.videoSubTitlesNames as? [String] {
+            print("[WakoCapacitorVideoPlayer] Internal subtitle tracks before adding external ones: \(subtitleTracks.count)")
+            for (i, track) in subtitleTracks.enumerated() {
+                if i < subtitleNames.count {
+                    print("[WakoCapacitorVideoPlayer] Internal Track \(i): ID=\(track), Name='\(subtitleNames[i])'")
+                }
+            }
+        } else {
+            print("[WakoCapacitorVideoPlayer] No internal subtitle tracks found before adding external ones")
+        }
+        
+        // Track the number of successful additions
+        var addedCount = 0
+        var failedCount = 0
+        
+        print("[WakoCapacitorVideoPlayer] Adding \(externalSubs.count) external subtitles sequentially")
+        
+        // Add each subtitle with a delay to ensure all are processed
+        for (index, subtitle) in externalSubs.enumerated() {
+            if let urlString = subtitle["url"] as? String, !urlString.isEmpty,
+               let url = URL(string: urlString) {
+                
+                // More substantial delay between subtitle additions to prevent conflicts
+                // This is important as VLC sometimes needs time to process each subtitle
+                let delay = 0.3 * Double(index)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    print("[WakoCapacitorVideoPlayer] Adding external subtitle \(index+1)/\(externalSubs.count): \(urlString)")
+                    
+                    // For remote URLs, add directly
+                    let result = self.mediaPlayer.addPlaybackSlave(url, type: .subtitle, enforce: true)
+                    let success = result != 0
+                    
+                    print("[WakoCapacitorVideoPlayer] External subtitle \(index+1) added: \(success ? "SUCCESS" : "FAILED") (result=\(result))")
+                    
+                    if success {
+                        addedCount += 1
+                        // Enable subtitle button immediately upon first success
+                        DispatchQueue.main.async {
+                            self.subtitleButton.isEnabled = true
+                        }
+                    } else {
+                        failedCount += 1
+                    }
+                    
+                    // After all subtitles processed, log final status
+                    if index == externalSubs.count - 1 {
+                        // Additional delay to ensure VLC has processed all additions
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                            print("[WakoCapacitorVideoPlayer] Subtitle addition complete. Added \(addedCount) subtitles, failed \(failedCount) subtitles.")
+                            
+                            // Log final subtitle tracks
+                            if let finalTracks = self.mediaPlayer.videoSubTitlesIndexes as? [NSNumber],
+                               let finalNames = self.mediaPlayer.videoSubTitlesNames as? [String] {
+                                print("[WakoCapacitorVideoPlayer] Final subtitle tracks count: \(finalTracks.count)")
+                                for (i, track) in finalTracks.enumerated() {
+                                    if i < finalNames.count {
+                                        print("[WakoCapacitorVideoPlayer] Final Track \(i): ID=\(track), Name='\(finalNames[i])'")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                print("[WakoCapacitorVideoPlayer] Invalid subtitle URL at index \(index)")
+                failedCount += 1
+            }
+        }
+    }
+
     private func setupDoubleTapIndicators() {
-        // Rewind indicator (left side)
         let rewindView = UIView()
         rewindView.isHidden = true
         rewindView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -947,12 +1181,10 @@ class PlayerViewController: UIViewController {
         rewindImageView.contentMode = .scaleAspectFit
         rewindImageView.tintColor = .white
         
-        // Try to use system images if available, otherwise we'll create text label
         if #available(iOS 13.0, *) {
             let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)
             rewindImageView.image = UIImage(systemName: "gobackward.10", withConfiguration: config)
         } else {
-            // Fallback for older iOS versions
             let label = UILabel()
             label.text = "-10"
             label.textColor = .white
@@ -977,7 +1209,6 @@ class PlayerViewController: UIViewController {
         
         rewindIndicator = rewindView
         
-        // Forward indicator (right side)
         let forwardView = UIView()
         forwardView.isHidden = true
         forwardView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -997,12 +1228,10 @@ class PlayerViewController: UIViewController {
         forwardImageView.contentMode = .scaleAspectFit
         forwardImageView.tintColor = .white
         
-        // Try to use system images if available, otherwise we'll create text label
         if #available(iOS 13.0, *) {
             let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)
             forwardImageView.image = UIImage(systemName: "goforward.10", withConfiguration: config)
         } else {
-            // Fallback for older iOS versions
             let label = UILabel()
             label.text = "+10"
             label.textColor = .white
@@ -1028,26 +1257,21 @@ class PlayerViewController: UIViewController {
         forwardIndicator = forwardView
     }
     
-    // Simplify gesture setup for the whole video view
     private func setupDoubleTapGestureRecognizers() {
-        // Remove existing gesture recognizers from videoView
         if let existingGestures = videoView.gestureRecognizers {
             for gesture in existingGestures {
                 videoView.removeGestureRecognizer(gesture)
             }
         }
         
-        // Create tap gesture for showing/hiding controls
         let singleTap = UITapGestureRecognizer(target: self, action: #selector(toggleControlsVisibility))
         singleTap.numberOfTapsRequired = 1
         videoView.addGestureRecognizer(singleTap)
         
-        // Left double tap for rewind
         let leftDoubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         leftDoubleTap.numberOfTapsRequired = 2
         videoView.addGestureRecognizer(leftDoubleTap)
         
-        // Make sure single tap doesn't trigger when double-tapping
         singleTap.require(toFail: leftDoubleTap)
         
         videoView.isUserInteractionEnabled = true
@@ -1058,43 +1282,35 @@ class PlayerViewController: UIViewController {
         let screenWidth = videoView.bounds.width
         
         if tapLocation.x < screenWidth / 2 {
-            // Left side of the screen - rewind
             seek(direction: -1)
             showRewindIndicator()
         } else {
-            // Right side of the screen - forward
             seek(direction: 1)
             showForwardIndicator()
         }
     }
     
-    // Seek in video (negative direction for rewind, positive for forward)
     private func seek(direction: Float) {
-        // No need to unwrap mediaPlayer as it's a non-optional property
         let currentTimeValue = mediaPlayer.time.value
         guard let floatValue = currentTimeValue?.floatValue else { return }
         
-        let currentTime = floatValue / 1000.0  // Convert to seconds
+        let currentTime = floatValue / 1000.0
         let newTime = currentTime + (direction * seekDuration)
         
         mediaPlayer.time = VLCTime(int: Int32(newTime * 1000))
     }
     
-    // Show the rewind indicator briefly
     private func showRewindIndicator() {
         rewindIndicator?.isHidden = false
         
-        // Hide after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.rewindIndicator?.isHidden = true
         }
     }
     
-    // Show the forward indicator briefly
     private func showForwardIndicator() {
         forwardIndicator?.isHidden = false
         
-        // Hide after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.forwardIndicator?.isHidden = true
         }
@@ -1123,11 +1339,9 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                 let currentTime = self.mediaPlayer.time.value?.intValue ?? 0
                 let totalDuration = duration
                 
-                // Check if video is longer than 60 minutes to include hours in format
-                let showHours = totalDuration > 3600000 // 60 minutes in milliseconds
+                let showHours = totalDuration > 3600000
                 
                 if showHours {
-                    // Format with hours (HH:MM:SS)
                     let currentHours = currentTime / 3600000
                     let currentMinutes = (currentTime % 3600000) / 60000
                     let currentSeconds = (currentTime % 60000) / 1000
@@ -1138,7 +1352,6 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                     let totalSeconds = (totalDuration % 60000) / 1000
                     self.totalTimeLabel.text = String(format: "%02d:%02d:%02d", totalHours, totalMinutes, totalSeconds)
                 } else {
-                    // Format without hours (MM:SS)
                     let currentMinutes = currentTime / 60000
                     let currentSeconds = (currentTime % 60000) / 1000
                     self.currentTimeLabel.text = String(format: "%02d:%02d", currentMinutes, currentSeconds)
@@ -1151,10 +1364,8 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                 if !self.hasStartedPlaying {
                     self.hasStartedPlaying = true
                     
-                    // Check and enable subtitles now that the media is loaded
                     self.checkAndEnableSubtitles()
                     
-                    // Notification that the player is ready
                     let currentTime = Double(self.mediaPlayer.time.value?.intValue ?? 0) / 1000
                     print("[WakoCapacitorVideoPlayer] Sending WakoPlayerReady with currentTime: \(currentTime)")
                     NotificationCenter.default.post(
@@ -1167,12 +1378,14 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
         }
     }
     
-    // Method to check and enable subtitles
     private func checkAndEnableSubtitles() {
         if let subtitleTracks = self.mediaPlayer.videoSubTitlesIndexes as? [NSNumber], !subtitleTracks.isEmpty {
-            self.subtitleButton.isEnabled = true
-            print("[WakoCapacitorVideoPlayer] Subtitles available (media loaded): \(subtitleTracks.count) tracks")
-            self.selectTracks()
+            DispatchQueue.main.async {
+                self.subtitleButton.isEnabled = true
+            }
+            print("[WakoCapacitorVideoPlayer] Internal subtitles available (media loaded): \(subtitleTracks.count) tracks")
+        } else {
+            print("[WakoCapacitorVideoPlayer] No internal subtitles available in the media")
         }
     }
 
@@ -1185,37 +1398,59 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
             switch self.mediaPlayer.state {
             case .buffering:
                 self.loadingIndicator.startAnimating()
+                
             case .opening:
-                // Apply initial position at opening
-                if self.startAtSec > 0 && !self.hasStartedPlaying {
-                    print("[WakoCapacitorVideoPlayer] Setting initial time at opening: \(self.startAtSec)")
-                    self.mediaPlayer.time = VLCTime(int: Int32(self.startAtSec * 1000))
-                }
+                // Pas besoin d'ajuster la position ici, on utilise l'option start-time
+                print("[WakoCapacitorVideoPlayer] Media opening")
+                
             case .playing:
                 self.loadingIndicator.stopAnimating()
                 
-                // At first startup, check the starting position again
-                if !self.hasStartedPlaying && self.startAtSec > 0 {
-                    print("[WakoCapacitorVideoPlayer] Confirming initial time at first play: \(self.startAtSec)")
-                    self.mediaPlayer.time = VLCTime(int: Int32(self.startAtSec * 1000))
+                if !self.hasStartedPlaying {
+                    print("[WakoCapacitorVideoPlayer] First playback started")
+                    
+                    // Marquer comme démarré
+                    self.hasStartedPlaying = true
+                    
+                    // Ajouter les sous-titres externes une fois que la lecture a commencé
+                    self.addSubtitlesAfterPlayback()
+                    
+                    // Vérifier et activer les sous-titres internes s'ils existent
+                    self.checkAndEnableSubtitles()
+                    
+                    // Après une courte pause pour laisser tout se charger
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        // Sélectionner les pistes préférées
+                        self.selectTracks()
+                        
+                        // Notifier que le lecteur est prêt
+                        let currentTime = Double(self.mediaPlayer.time.value?.intValue ?? 0) / 1000
+                        print("[WakoCapacitorVideoPlayer] Sending WakoPlayerReady with currentTime: \(currentTime)")
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("WakoPlayerReady"),
+                            object: nil,
+                            userInfo: ["currentTime": currentTime]
+                        )
+                    }
                 }
                 
-                // Check subtitles during playback
-                self.checkAndEnableSubtitles()
             case .paused:
                 self.loadingIndicator.stopAnimating()
+                
             case .error:
                 self.loadingIndicator.stopAnimating()
                 self.dismiss(animated: true)
                 print("[WakoCapacitorVideoPlayer] Playback error occurred")
+                
             case .ended:
                 self.loadingIndicator.stopAnimating()
-                if loopOnEnd {
-                    mediaPlayer.time = VLCTime(int: 0)
-                    mediaPlayer.play()
-                } else if exitOnEnd {
+                if self.loopOnEnd {
+                    self.mediaPlayer.time = VLCTime(int: 0)
+                    self.mediaPlayer.play()
+                } else if self.exitOnEnd {
                     self.dismiss(animated: true)
                 }
+                
             default:
                 break
             }
