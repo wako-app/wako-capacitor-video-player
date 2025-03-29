@@ -182,8 +182,6 @@ class PlayerViewController: UIViewController {
     private let controlsView = UIView()
     private let titleLabel = UILabel()
     private let playPauseButton = UIButton(type: .system)
-    private let forwardButton = UIButton(type: .system)
-    private let backwardButton = UIButton(type: .system)
     private let closeButton = UIButton(type: .system)
     private let seekBar = UISlider()
     private let subtitleButton = UIButton(type: .system)
@@ -322,37 +320,13 @@ class PlayerViewController: UIViewController {
             playPauseButton.heightAnchor.constraint(equalToConstant: 50)
         ])
 
-        backwardButton.setImage(UIImage(systemName: "backward.fill"), for: .normal)
-        backwardButton.tintColor = .white
-        backwardButton.addTarget(self, action: #selector(jumpBackward), for: .touchUpInside)
-        controlsView.addSubview(backwardButton)
-        backwardButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            backwardButton.trailingAnchor.constraint(equalTo: playPauseButton.leadingAnchor, constant: -20),
-            backwardButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
-            backwardButton.widthAnchor.constraint(equalToConstant: 50),
-            backwardButton.heightAnchor.constraint(equalToConstant: 50)
-        ])
-
-        forwardButton.setImage(UIImage(systemName: "forward.fill"), for: .normal)
-        forwardButton.tintColor = .white
-        forwardButton.addTarget(self, action: #selector(jumpForward), for: .touchUpInside)
-        controlsView.addSubview(forwardButton)
-        forwardButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            forwardButton.leadingAnchor.constraint(equalTo: playPauseButton.trailingAnchor, constant: 20),
-            forwardButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
-            forwardButton.widthAnchor.constraint(equalToConstant: 50),
-            forwardButton.heightAnchor.constraint(equalToConstant: 50)
-        ])
-
         subtitleButton.setImage(UIImage(systemName: "captions.bubble.fill"), for: .normal)
         subtitleButton.tintColor = .white
         subtitleButton.addTarget(self, action: #selector(showSubtitles), for: .touchUpInside)
         controlsView.addSubview(subtitleButton)
         subtitleButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            subtitleButton.leadingAnchor.constraint(equalTo: forwardButton.trailingAnchor, constant: 20),
+            subtitleButton.leadingAnchor.constraint(equalTo: playPauseButton.trailingAnchor, constant: 30),
             subtitleButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
             subtitleButton.widthAnchor.constraint(equalToConstant: 50),
             subtitleButton.heightAnchor.constraint(equalToConstant: 50)
@@ -364,7 +338,7 @@ class PlayerViewController: UIViewController {
         controlsView.addSubview(audioTrackButton)
         audioTrackButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            audioTrackButton.trailingAnchor.constraint(equalTo: backwardButton.leadingAnchor, constant: -20),
+            audioTrackButton.trailingAnchor.constraint(equalTo: playPauseButton.leadingAnchor, constant: -30),
             audioTrackButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
             audioTrackButton.widthAnchor.constraint(equalToConstant: 50),
             audioTrackButton.heightAnchor.constraint(equalToConstant: 50)
@@ -431,12 +405,13 @@ class PlayerViewController: UIViewController {
         controlsView.addSubview(castButton)
         castButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            castButton.leadingAnchor.constraint(equalTo: subtitleButton.trailingAnchor, constant: 20),
+            castButton.leadingAnchor.constraint(equalTo: subtitleButton.trailingAnchor, constant: 30),
             castButton.centerYAnchor.constraint(equalTo: controlsView.centerYAnchor),
             castButton.widthAnchor.constraint(equalToConstant: 50),
             castButton.heightAnchor.constraint(equalToConstant: 50)
         ])
-
+        
+        // Disable subtitle button until tracks are available
         subtitleButton.isEnabled = false
     }
 
@@ -487,16 +462,6 @@ class PlayerViewController: UIViewController {
     private func updatePlayPauseButton() {
         let imageName = mediaPlayer.isPlaying ? "pause.fill" : "play.fill"
         playPauseButton.setImage(UIImage(systemName: imageName), for: .normal)
-    }
-
-    @objc private func jumpBackward() {
-        mediaPlayer.jumpBackward(10)
-        resetControlsTimer()
-    }
-
-    @objc private func jumpForward() {
-        mediaPlayer.jumpForward(10)
-        resetControlsTimer()
     }
 
     @objc private func closePlayer() {
