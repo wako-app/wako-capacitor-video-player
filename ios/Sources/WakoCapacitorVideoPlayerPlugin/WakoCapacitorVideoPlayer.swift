@@ -12,8 +12,16 @@ public class WakoCapacitorVideoPlayer {
                 completion(false)
                 return
             }
-            self.mediaPlayer = VLCMediaPlayer()
-            self.playerViewController = PlayerViewController(mediaPlayer: self.mediaPlayer!)
+            
+            // S'assurer que le mediaPlayer est créé sur le thread principal
+            let player = VLCMediaPlayer()
+            
+            // Configuration initiale qui pourrait affecter la vue
+            player.drawable = nil
+            player.audio?.volume = 100
+            
+            self.mediaPlayer = player
+            self.playerViewController = PlayerViewController(mediaPlayer: player)
             completion(true)
         }
     }
@@ -178,11 +186,11 @@ class PlayerViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.mediaPlayer.drawable = self.videoView
+            self.mediaPlayer.delegate = self
+            self.updatePlayPauseButton()
+            self.resetControlsTimer()
+            self.loadingIndicator.startAnimating()
         }
-        mediaPlayer.delegate = self
-        updatePlayPauseButton()
-        resetControlsTimer()
-        loadingIndicator.startAnimating()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -400,10 +408,8 @@ class PlayerViewController: UIViewController {
     }
     
     @objc private func hideControls() {
-        DispatchQueue.main.async { [weak self] in
-            self?.controlsView.isHidden = true
-            self?.closeButton.isHidden = true
-        }
+        controlsView.isHidden = true
+        closeButton.isHidden = true
     }
 
     private func trackInfo(forTrackIndex index: Int32, type: String) -> [String: Any] {
@@ -443,8 +449,11 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
     }
 
     func mediaPlayerStateChanged(_ aNotification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-        guard let self = self else { return }
+        // Utiliser performSelector pour exécuter le code sur le thread principal
+        self.performSelector(onMainThread: #selector(handleStateChange), with: nil, waitUntilDone: false)
+    }
+    
+    @objc private func handleStateChange() {
         print("[WakoCapacitorVideoPlayer] State changed to: \(self.mediaPlayer.state.rawValue)")
         self.updatePlayPauseButton()
         switch self.mediaPlayer.state {
@@ -452,12 +461,15 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
             self.loadingIndicator.startAnimating()
         case .playing:
             self.loadingIndicator.stopAnimating()
-        case .error, .ended:
+        case .error:
+            self.loadingIndicator.stopAnimating()
+            self.dismiss(animated: true)
+            print("[WakoCapacitorVideoPlayer] Playback error occurred")
+        case .ended:
             self.loadingIndicator.stopAnimating()
             self.dismiss(animated: true)
         default:
             break
         }
     }
-}
 }

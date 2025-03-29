@@ -107,7 +107,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.implementation.play(url: url) { playSuccess in
                     if playSuccess {
                         print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
-                        call.resolve()
+                        call.resolve([
+                            "result": true,
+                            "method": "initPlayer"
+                        ])
                     } else {
                         print("[WakoCapacitorVideoPlayerPlugin] Error: Failed to start playback")
                         call.reject("Failed to start playback")
@@ -124,7 +127,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[WakoCapacitorVideoPlayerPlugin] isPlaying called")
         let isPlaying = implementation.isPlaying()
         call.resolve([
-            "isPlaying": isPlaying
+            "result": true,
+            "method": "isPlaying",
+            "value": isPlaying
         ])
     }
     
@@ -142,7 +147,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             print("[WakoCapacitorVideoPlayerPlugin] Play result: \(success)")
             if success {
                 print("[WakoCapacitorVideoPlayerPlugin] Play started successfully")
-                call.resolve()
+                call.resolve([
+                    "result": true,
+                    "method": "play"
+                ])
             } else {
                 print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
                 call.reject("Player not found")
@@ -155,7 +163,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.pause()
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Pause successful")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "pause"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
@@ -167,7 +178,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let duration = implementation.getDuration()
         print("[WakoCapacitorVideoPlayerPlugin] Duration: \(duration)")
         call.resolve([
-            "duration": duration
+            "result": true,
+            "method": "getDuration",
+            "value": duration
         ])
     }
     
@@ -176,7 +189,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let time = implementation.getCurrentTime()
         print("[WakoCapacitorVideoPlayerPlugin] Current time: \(time)")
         call.resolve([
-            "time": time
+            "result": true,
+            "method": "getCurrentTime",
+            "value": time
         ])
     }
     
@@ -191,7 +206,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.seek(time: seektime)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Seek successful")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "setCurrentTime"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
@@ -202,7 +220,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[WakoCapacitorVideoPlayerPlugin] getVolume called")
         let volume = implementation.getVolume()
         call.resolve([
-            "volume": volume
+            "result": true,
+            "method": "getVolume",
+            "value": volume
         ])
     }
     
@@ -217,7 +237,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.setVolume(volume: Int(volume * 100))
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Volume set successfully")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "setVolume"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found or audio not available")
             call.reject("Player not found or audio not available")
@@ -228,7 +251,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[WakoCapacitorVideoPlayerPlugin] getMuted called")
         let muted = implementation.getMuted()
         call.resolve([
-            "muted": muted
+            "result": true,
+            "method": "getMuted",
+            "value": muted
         ])
     }
     
@@ -243,7 +268,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.setMuted(muted: muted)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Muted set successfully")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "setMuted"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
@@ -261,7 +289,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.setRate(rate: rate)
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Rate set successfully")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "setRate"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
@@ -272,14 +303,19 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[WakoCapacitorVideoPlayerPlugin] getRate called")
         let rate = implementation.getRate()
         call.resolve([
-            "rate": rate
+            "result": true,
+            "method": "getRate",
+            "value": rate
         ])
     }
     
     @objc func stopAllPlayers(_ call: CAPPluginCall) {
         print("[WakoCapacitorVideoPlayerPlugin] stopAllPlayers called")
         implementation.stopAllPlayers()
-        call.resolve()
+        call.resolve([
+            "result": true,
+            "method": "stopAllPlayers"
+        ])
     }
     
     @objc func showController(_ call: CAPPluginCall) {
@@ -287,7 +323,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.showController()
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Controller shown successfully")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "showController"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
@@ -298,7 +337,9 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         print("[WakoCapacitorVideoPlayerPlugin] isControllerIsFullyVisible called")
         let isVisible = implementation.isControllerIsFullyVisible()
         call.resolve([
-            "isVisible": isVisible
+            "result": true,
+            "method": "isControllerIsFullyVisible",
+            "value": isVisible
         ])
     }
     
@@ -307,7 +348,10 @@ public class WakoCapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         let success = implementation.exitPlayer()
         if success {
             print("[WakoCapacitorVideoPlayerPlugin] Player exited successfully")
-            call.resolve()
+            call.resolve([
+                "result": true,
+                "method": "exitPlayer"
+            ])
         } else {
             print("[WakoCapacitorVideoPlayerPlugin] Error: Player not found")
             call.reject("Player not found")
