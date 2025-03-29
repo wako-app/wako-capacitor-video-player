@@ -911,13 +911,32 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                 self.seekBar.value = Float(self.mediaPlayer.time.value?.intValue ?? 0) / 1000
                 
                 let currentTime = self.mediaPlayer.time.value?.intValue ?? 0
-                let currentMinutes = currentTime / 60000
-                let currentSeconds = (currentTime % 60000) / 1000
-                self.currentTimeLabel.text = String(format: "%02d:%02d", currentMinutes, currentSeconds)
+                let totalDuration = duration
                 
-                let totalMinutes = duration / 60000
-                let totalSeconds = (duration % 60000) / 1000
-                self.totalTimeLabel.text = String(format: "%02d:%02d", totalMinutes, totalSeconds)
+                // Check if video is longer than 60 minutes to include hours in format
+                let showHours = totalDuration > 3600000 // 60 minutes in milliseconds
+                
+                if showHours {
+                    // Format with hours (HH:MM:SS)
+                    let currentHours = currentTime / 3600000
+                    let currentMinutes = (currentTime % 3600000) / 60000
+                    let currentSeconds = (currentTime % 60000) / 1000
+                    self.currentTimeLabel.text = String(format: "%02d:%02d:%02d", currentHours, currentMinutes, currentSeconds)
+                    
+                    let totalHours = totalDuration / 3600000
+                    let totalMinutes = (totalDuration % 3600000) / 60000
+                    let totalSeconds = (totalDuration % 60000) / 1000
+                    self.totalTimeLabel.text = String(format: "%02d:%02d:%02d", totalHours, totalMinutes, totalSeconds)
+                } else {
+                    // Format without hours (MM:SS)
+                    let currentMinutes = currentTime / 60000
+                    let currentSeconds = (currentTime % 60000) / 1000
+                    self.currentTimeLabel.text = String(format: "%02d:%02d", currentMinutes, currentSeconds)
+                    
+                    let totalMinutes = totalDuration / 60000
+                    let totalSeconds = (totalDuration % 60000) / 1000
+                    self.totalTimeLabel.text = String(format: "%02d:%02d", totalMinutes, totalSeconds)
+                }
                 
                 if !self.hasStartedPlaying {
                     self.hasStartedPlaying = true
