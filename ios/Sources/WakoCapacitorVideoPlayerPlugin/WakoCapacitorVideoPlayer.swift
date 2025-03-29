@@ -372,7 +372,7 @@ class PlayerViewController: UIViewController {
             subtitleButton.heightAnchor.constraint(equalToConstant: 50)
         ])
 
-        audioTrackButton.setImage(UIImage(systemName: "speaker.wave.2.fill"), for: .normal)
+        audioTrackButton.setImage(UIImage(systemName: "ear"), for: .normal)
         audioTrackButton.tintColor = .white
         audioTrackButton.addTarget(self, action: #selector(showAudioTracks), for: .touchUpInside)
         controlsView.addSubview(audioTrackButton)
