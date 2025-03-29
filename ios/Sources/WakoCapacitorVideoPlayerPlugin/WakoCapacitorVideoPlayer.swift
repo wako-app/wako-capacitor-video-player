@@ -40,15 +40,25 @@ public class WakoCapacitorVideoPlayer {
         // Create the media
         let media = VLCMedia(url: mediaURL)
         
+        // Configure options for the media
+        var options: [String: Any] = [:]
+        
         // If startTime is defined, configure options for VLC
         let startTime = playerViewController.getStartAtSec()
         if startTime > 0 {
             // The "start-time" option is in milliseconds
             print("[WakoCapacitorVideoPlayer] Setting start-time option: \(startTime) seconds")
-            media.addOptions([
-                "start-time": NSNumber(value: Int32(startTime))
-            ])
+            options["start-time"] = NSNumber(value: Int32(startTime))
         }
+        
+        // Configure subtitle appearance
+        options["sub-text-scale"] = NSNumber(value: 0.6) // 60% of default size
+        // Other possible options:
+        // options["sub-text-color"] = NSNumber(value: 16777215)  // White in decimal (FFFFFF)
+        // options["sub-text-font"] = "Helvetica"
+        
+        // Apply all options at once
+        media.addOptions(options)
         
         mediaPlayer.media = media
         
