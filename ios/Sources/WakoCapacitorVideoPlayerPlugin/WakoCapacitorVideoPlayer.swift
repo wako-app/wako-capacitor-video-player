@@ -193,7 +193,13 @@ class PlayerViewController: UIViewController {
     private let totalTimeLabel = UILabel()
     private let castButton = UIButton(type: .system)
     private var controlsTimer: Timer?
+    private var isControlsVisible = true
     
+    // Double tap indicators
+    private var rewindIndicator: UIView?
+    private var forwardIndicator: UIView?
+    private let seekDuration: Float = 10.0 // 10 seconds for seeking
+
     private var videoTitle: String?
     private var subtitleTrackId: String?
     private var subtitleLocale: String?
@@ -223,6 +229,8 @@ class PlayerViewController: UIViewController {
         self.displayMode = options["displayMode"] as? String ?? "all"
         self.startAtSec = options["startAtSec"] as? Double ?? 0
         super.init(nibName: nil, bundle: nil)
+        self.rewindIndicator = nil
+        self.forwardIndicator = nil
     }
 
     required init?(coder: NSCoder) {
@@ -231,21 +239,21 @@ class PlayerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
         setupUI()
+        setupMediaPlayer()
+        
+        // Initialize controls as visible and start hide timer
+        controlsView.isHidden = false
+        closeButton.isHidden = false
+        titleLabel.isHidden = false
+        castButton.isHidden = !isAirPlayAvailable
+        
+        // Start timer to auto-hide controls
+        resetControlsTimer()
+        
+        // Check AirPlay availability
         checkAirPlayAvailability()
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.mediaPlayer.drawable = self.videoView
-            self.mediaPlayer.delegate = self
-            self.updatePlayPauseButton()
-            self.resetControlsTimer()
-            self.loadingIndicator.startAnimating()
-            
-            self.controlsView.isHidden = !self.showControls
-            self.closeButton.isHidden = !self.showControls
-            self.titleLabel.isHidden = !self.showControls
-            self.castButton.isHidden = !self.isAirPlayAvailable
-        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -264,6 +272,12 @@ class PlayerViewController: UIViewController {
             videoView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             videoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        
+        // Setup double tap indicators
+        setupDoubleTapIndicators()
+        
+        // Setup double tap gesture recognizers
+        setupDoubleTapGestureRecognizers()
 
         controlsView.backgroundColor = .black.withAlphaComponent(0.7)
         view.addSubview(controlsView)
@@ -416,10 +430,6 @@ class PlayerViewController: UIViewController {
             castButton.widthAnchor.constraint(equalToConstant: 50),
             castButton.heightAnchor.constraint(equalToConstant: 50)
         ])
-
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(toggleControlsVisibility))
-        videoView.addGestureRecognizer(tapGesture)
-        videoView.isUserInteractionEnabled = true
 
         subtitleButton.isEnabled = false
     }
@@ -671,11 +681,18 @@ class PlayerViewController: UIViewController {
     }
 
     @objc private func toggleControlsVisibility() {
-        controlsView.isHidden = !controlsView.isHidden
-        closeButton.isHidden = !closeButton.isHidden
-        titleLabel.isHidden = !titleLabel.isHidden
-        castButton.isHidden = !isAirPlayAvailable || controlsView.isHidden
-        resetControlsTimer()
+        let shouldShow = controlsView.isHidden
+        
+        // Update UI based on new state
+        controlsView.isHidden = !shouldShow
+        closeButton.isHidden = !shouldShow
+        titleLabel.isHidden = !shouldShow
+        castButton.isHidden = !isAirPlayAvailable || !shouldShow
+        
+        // Reset timer if controls are now visible
+        if shouldShow {
+            resetControlsTimer()
+        }
     }
     
     @objc private func hideControls() {
@@ -687,7 +704,7 @@ class PlayerViewController: UIViewController {
 
     private func resetControlsTimer() {
         controlsTimer?.invalidate()
-        if !controlsView.isHidden {
+        if !controlsView.isHidden && showControls {
             controlsTimer = Timer.scheduledTimer(timeInterval: 3.0, target: self, selector: #selector(hideControls), userInfo: nil, repeats: false)
         }
     }
@@ -898,6 +915,191 @@ class PlayerViewController: UIViewController {
     // Add a public getter for startAtSec
     public func getStartAtSec() -> Double {
         return startAtSec
+    }
+
+    // Configure the double tap indicators (visual feedback when double tapping)
+    private func setupDoubleTapIndicators() {
+        // Rewind indicator (left side)
+        let rewindView = UIView()
+        rewindView.isHidden = true
+        rewindView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        rewindView.layer.cornerRadius = 40
+        rewindView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(rewindView)
+        
+        NSLayoutConstraint.activate([
+            rewindView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            rewindView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 50),
+            rewindView.widthAnchor.constraint(equalToConstant: 80),
+            rewindView.heightAnchor.constraint(equalToConstant: 80)
+        ])
+        
+        let rewindImageView = UIImageView()
+        rewindImageView.translatesAutoresizingMaskIntoConstraints = false
+        rewindImageView.contentMode = .scaleAspectFit
+        rewindImageView.tintColor = .white
+        
+        // Try to use system images if available, otherwise we'll create text label
+        if #available(iOS 13.0, *) {
+            let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)
+            rewindImageView.image = UIImage(systemName: "gobackward.10", withConfiguration: config)
+        } else {
+            // Fallback for older iOS versions
+            let label = UILabel()
+            label.text = "-10"
+            label.textColor = .white
+            label.font = .boldSystemFont(ofSize: 24)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            rewindView.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: rewindView.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: rewindView.centerYAnchor)
+            ])
+        }
+        
+        if rewindImageView.image != nil {
+            rewindView.addSubview(rewindImageView)
+            NSLayoutConstraint.activate([
+                rewindImageView.centerXAnchor.constraint(equalTo: rewindView.centerXAnchor),
+                rewindImageView.centerYAnchor.constraint(equalTo: rewindView.centerYAnchor),
+                rewindImageView.widthAnchor.constraint(equalToConstant: 40),
+                rewindImageView.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        }
+        
+        rewindIndicator = rewindView
+        
+        // Forward indicator (right side)
+        let forwardView = UIView()
+        forwardView.isHidden = true
+        forwardView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        forwardView.layer.cornerRadius = 40
+        forwardView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(forwardView)
+        
+        NSLayoutConstraint.activate([
+            forwardView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            forwardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -50),
+            forwardView.widthAnchor.constraint(equalToConstant: 80),
+            forwardView.heightAnchor.constraint(equalToConstant: 80)
+        ])
+        
+        let forwardImageView = UIImageView()
+        forwardImageView.translatesAutoresizingMaskIntoConstraints = false
+        forwardImageView.contentMode = .scaleAspectFit
+        forwardImageView.tintColor = .white
+        
+        // Try to use system images if available, otherwise we'll create text label
+        if #available(iOS 13.0, *) {
+            let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)
+            forwardImageView.image = UIImage(systemName: "goforward.10", withConfiguration: config)
+        } else {
+            // Fallback for older iOS versions
+            let label = UILabel()
+            label.text = "+10"
+            label.textColor = .white
+            label.font = .boldSystemFont(ofSize: 24)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            forwardView.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: forwardView.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: forwardView.centerYAnchor)
+            ])
+        }
+        
+        if forwardImageView.image != nil {
+            forwardView.addSubview(forwardImageView)
+            NSLayoutConstraint.activate([
+                forwardImageView.centerXAnchor.constraint(equalTo: forwardView.centerXAnchor),
+                forwardImageView.centerYAnchor.constraint(equalTo: forwardView.centerYAnchor),
+                forwardImageView.widthAnchor.constraint(equalToConstant: 40),
+                forwardImageView.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        }
+        
+        forwardIndicator = forwardView
+    }
+    
+    // Simplify gesture setup for the whole video view
+    private func setupDoubleTapGestureRecognizers() {
+        // Remove existing gesture recognizers from videoView
+        if let existingGestures = videoView.gestureRecognizers {
+            for gesture in existingGestures {
+                videoView.removeGestureRecognizer(gesture)
+            }
+        }
+        
+        // Create tap gesture for showing/hiding controls
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(toggleControlsVisibility))
+        singleTap.numberOfTapsRequired = 1
+        videoView.addGestureRecognizer(singleTap)
+        
+        // Left double tap for rewind
+        let leftDoubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        leftDoubleTap.numberOfTapsRequired = 2
+        videoView.addGestureRecognizer(leftDoubleTap)
+        
+        // Make sure single tap doesn't trigger when double-tapping
+        singleTap.require(toFail: leftDoubleTap)
+        
+        videoView.isUserInteractionEnabled = true
+    }
+    
+    @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        let tapLocation = gesture.location(in: videoView)
+        let screenWidth = videoView.bounds.width
+        
+        if tapLocation.x < screenWidth / 2 {
+            // Left side of the screen - rewind
+            seek(direction: -1)
+            showRewindIndicator()
+        } else {
+            // Right side of the screen - forward
+            seek(direction: 1)
+            showForwardIndicator()
+        }
+    }
+    
+    // Seek in video (negative direction for rewind, positive for forward)
+    private func seek(direction: Float) {
+        // No need to unwrap mediaPlayer as it's a non-optional property
+        let currentTimeValue = mediaPlayer.time.value
+        guard let floatValue = currentTimeValue?.floatValue else { return }
+        
+        let currentTime = floatValue / 1000.0  // Convert to seconds
+        let newTime = currentTime + (direction * seekDuration)
+        
+        mediaPlayer.time = VLCTime(int: Int32(newTime * 1000))
+    }
+    
+    // Show the rewind indicator briefly
+    private func showRewindIndicator() {
+        rewindIndicator?.isHidden = false
+        
+        // Hide after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.rewindIndicator?.isHidden = true
+        }
+    }
+    
+    // Show the forward indicator briefly
+    private func showForwardIndicator() {
+        forwardIndicator?.isHidden = false
+        
+        // Hide after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.forwardIndicator?.isHidden = true
+        }
+    }
+
+    private func setupMediaPlayer() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.mediaPlayer.drawable = self.videoView
+            self.mediaPlayer.delegate = self
+            self.updatePlayPauseButton()
+            self.loadingIndicator.startAnimating()
+        }
     }
 }
 
