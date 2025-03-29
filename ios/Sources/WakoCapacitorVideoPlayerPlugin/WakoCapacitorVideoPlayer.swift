@@ -364,6 +364,11 @@ class PlayerViewController: UIViewController {
             seekBar.bottomAnchor.constraint(equalTo: playPauseButton.topAnchor, constant: -10)
         ])
 
+        // Ajouter un tap gesture recognizer sur la seekBar
+        let seekBarTapGesture = UITapGestureRecognizer(target: self, action: #selector(seekBarTapped(_:)))
+        seekBar.addGestureRecognizer(seekBarTapGesture)
+        seekBar.isUserInteractionEnabled = true
+
         // Configure current time label
         currentTimeLabel.textColor = .white
         currentTimeLabel.font = .systemFont(ofSize: 12)
@@ -491,6 +496,14 @@ class PlayerViewController: UIViewController {
         resetControlsTimer()
     }
 
+    @objc private func seekBarTapped(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: seekBar)
+        let percentage = location.x / seekBar.bounds.width
+        let newValue = seekBar.minimumValue + (seekBar.maximumValue - seekBar.minimumValue) * Float(percentage)
+        seekBar.value = newValue
+        seekBarValueChanged()
+    }
+
     @objc private func showSubtitles() {
         guard let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] else {
             print("[WakoCapacitorVideoPlayer] No subtitles available")
@@ -539,6 +552,21 @@ class PlayerViewController: UIViewController {
     @objc private func showAudioTracks() {
         guard let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] else { return }
         let alert = UIAlertController(title: "Select Audio Track", message: nil, preferredStyle: .actionSheet)
+        
+        // Add "Off" option
+        let offAction = UIAlertAction(title: "Off", style: .default) { _ in
+            print("[WakoCapacitorVideoPlayer] Disabling audio track")
+            self.mediaPlayer.currentAudioTrackIndex = -1
+            self.resetControlsTimer()
+            let audioInfo = self.trackInfo(forTrackIndex: -1, type: "audio")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("WakoPlayerTracksChanged"),
+                object: nil,
+                userInfo: ["audioTrack": audioInfo]
+            )
+        }
+        offAction.setValue(mediaPlayer.currentAudioTrackIndex == -1, forKey: "checked")
+        alert.addAction(offAction)
         
         for (index, trackIndex) in audioTracks.enumerated() {
             let trackName = mediaPlayer.audioTrackNames[index] as? String ?? "Audio \(index + 1)"
@@ -681,7 +709,7 @@ class PlayerViewController: UIViewController {
         // Handle subtitle track selection
         if let subtitleTrackId = subtitleTrackId {
             print("[WakoCapacitorVideoPlayer] Attempting to select subtitle track by ID: \(subtitleTrackId)")
-            if subtitleTrackId == "#disabled" {
+            if subtitleTrackId == "off" || subtitleTrackId == "#disabled" {
                 mediaPlayer.currentVideoSubTitleIndex = -1
                 print("[WakoCapacitorVideoPlayer] Disabled subtitles")
             } else if let subtitleTracks = mediaPlayer.videoSubTitlesIndexes as? [NSNumber] {
@@ -715,7 +743,10 @@ class PlayerViewController: UIViewController {
         // Handle audio track selection
         if let audioTrackId = audioTrackId {
             print("[WakoCapacitorVideoPlayer] Attempting to select audio track by ID: \(audioTrackId)")
-            if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] {
+            if audioTrackId == "off" || audioTrackId == "#disabled" {
+                mediaPlayer.currentAudioTrackIndex = -1
+                print("[WakoCapacitorVideoPlayer] Disabled audio track")
+            } else if let audioTracks = mediaPlayer.audioTrackIndexes as? [NSNumber] {
                 print("[WakoCapacitorVideoPlayer] Available audio tracks: \(audioTracks.count)")
                 for (index, trackIndex) in audioTracks.enumerated() {
                     if let trackName = mediaPlayer.audioTrackNames[index] as? String {
