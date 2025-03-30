@@ -147,69 +147,94 @@ WakoCapacitorVideoPlayer.addListener('playerExit', (info) => {
 
 ## Advanced Use Cases
 
-### Integration in a React Application
+### Integration in an Ionic Angular Application
 
 ```typescript
-import { useEffect, useState } from 'react';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { WakoCapacitorVideoPlayer } from 'wako-capacitor-video-player';
+import { PluginListenerHandle } from '@capacitor/core';
 
-const VideoPlayerComponent = () => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+@Component({
+  selector: 'app-video-player',
+  template: `
+    <ion-content>
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Video Player</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-item>
+            <ion-label>Status: {{ isPlaying ? 'Playing' : 'Paused' }}</ion-label>
+          </ion-item>
+          <ion-item>
+            <ion-label>Current time: {{ currentTime }} seconds</ion-label>
+          </ion-item>
+          <ion-button expand="block" (click)="playVideo()">Play</ion-button>
+          <ion-button expand="block" (click)="pauseVideo()">Pause</ion-button>
+        </ion-card-content>
+      </ion-card>
+    </ion-content>
+  `
+})
+export class VideoPlayerComponent implements OnInit, OnDestroy {
+  isPlaying = false;
+  currentTime = 0;
+  private playListener!: PluginListenerHandle;
+  private pauseListener!: PluginListenerHandle;
+  private exitListener!: PluginListenerHandle;
 
-  useEffect(() => {
-    // Player initialization
-    const initializePlayer = async () => {
-      await WakoCapacitorVideoPlayer.initPlayer({
-        url: "https://example.com/video.mp4",
-        title: "My video",
-        smallTitle: "Description",
-        subtitles: [
-          { url: "https://example.com/subtitles-fr.vtt", name: "French", lang: "fr" }
-        ],
-        preferredLocale: "fr"
-      });
-    };
+  constructor() {}
 
-    // Event listeners
-    const playListener = WakoCapacitorVideoPlayer.addListener('playerPlay', (info) => {
-      setIsPlaying(true);
-      setCurrentTime(info.currentTime);
+  async ngOnInit() {
+    await this.initializePlayer();
+    this.setupEventListeners();
+  }
+
+  async initializePlayer() {
+    await WakoCapacitorVideoPlayer.initPlayer({
+      url: "https://example.com/video.mp4",
+      title: "My video",
+      smallTitle: "Description",
+      subtitles: [
+        { url: "https://example.com/subtitles-fr.vtt", name: "French", lang: "fr" }
+      ],
+      preferredLocale: "fr"
+    });
+  }
+
+  async setupEventListeners() {
+    this.playListener = await WakoCapacitorVideoPlayer.addListener('playerPlay', (info) => {
+      this.isPlaying = true;
+      this.currentTime = info.currentTime;
     });
 
-    const pauseListener = WakoCapacitorVideoPlayer.addListener('playerPause', (info) => {
-      setIsPlaying(false);
-      setCurrentTime(info.currentTime);
+    this.pauseListener = await WakoCapacitorVideoPlayer.addListener('playerPause', (info) => {
+      this.isPlaying = false;
+      this.currentTime = info.currentTime;
     });
 
-    const exitListener = WakoCapacitorVideoPlayer.addListener('playerExit', (info) => {
-      setIsPlaying(false);
-      setCurrentTime(info.currentTime);
+    this.exitListener = await WakoCapacitorVideoPlayer.addListener('playerExit', (info) => {
+      this.isPlaying = false;
+      this.currentTime = info.currentTime;
     });
+  }
 
-    initializePlayer();
+  async playVideo() {
+    await WakoCapacitorVideoPlayer.play();
+  }
 
-    // Cleanup listeners
-    return () => {
-      playListener.then(listener => listener.remove());
-      pauseListener.then(listener => listener.remove());
-      exitListener.then(listener => listener.remove());
-    };
-  }, []);
+  async pauseVideo() {
+    await WakoCapacitorVideoPlayer.pause();
+  }
 
-  return (
-    <div>
-      <div>Status: {isPlaying ? 'Playing' : 'Paused'}</div>
-      <div>Current time: {currentTime} seconds</div>
-      <button onClick={() => WakoCapacitorVideoPlayer.play()}>Play</button>
-      <button onClick={() => WakoCapacitorVideoPlayer.pause()}>Pause</button>
-    </div>
-  );
-};
-
-export default VideoPlayerComponent;
+  ngOnDestroy() {
+    // Clean up event listeners
+    if (this.playListener) this.playListener.remove();
+    if (this.pauseListener) this.pauseListener.remove();
+    if (this.exitListener) this.exitListener.remove();
+  }
+}
 ```
-
 ### Managing Multiple Audio Tracks and Subtitles
 
 ```typescript
@@ -235,45 +260,7 @@ WakoCapacitorVideoPlayer.addListener('playerTracksChanged', (info) => {
 });
 ```
 
-## Error Handling
-
-To handle potential errors when using the plugin, you can use the standard promise structure:
-
-```typescript
-try {
-  const result = await WakoCapacitorVideoPlayer.initPlayer({
-    url: "https://example.com/video.mp4",
-    title: "My Video"
-  });
-  
-  if (result.result) {
-    console.log("Player initialized successfully");
-  } else {
-    console.error("Initialization error:", result.message);
-  }
-} catch (error) {
-  console.error("Exception during player initialization:", error);
-}
-```
-
 ## User Interface Customization
-
-### Custom Subtitle Colors
-
-```typescript
-WakoCapacitorVideoPlayer.initPlayer({
-  url: "https://example.com/video.mp4",
-  title: "Video with custom subtitles",
-  subtitles: [
-    { url: "https://example.com/subtitles.vtt", name: "English", lang: "en" }
-  ],
-  subtitleOptions: {
-    foregroundColor: "rgba(255,255,0,1)", // Yellow text
-    backgroundColor: "rgba(0,0,0,0.5)",   // Semi-transparent black background
-    fontSize: 20                         // Larger font size
-  }
-});
-```
 
 ### Specific Display Modes
 
