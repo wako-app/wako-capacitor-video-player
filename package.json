@@ -1,6 +1,6 @@
 {
   "name": "wako-capacitor-video-player",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "A capacitor video player for wako.app",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

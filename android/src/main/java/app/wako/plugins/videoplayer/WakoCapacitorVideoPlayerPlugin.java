@@ -3,23 +3,20 @@ package app.wako.plugins.videoplayer;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.os.Build;
 import android.util.Log;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.getcapacitor.JSObject;
-import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
-import com.getcapacitor.annotation.PermissionCallback;
+
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
 import app.wako.plugins.videoplayer.Notifications.MyRunnable;
 import app.wako.plugins.videoplayer.Notifications.NotificationCenter;
-import app.wako.plugins.videoplayer.PickerVideo.PickerVideoFragment;
-import app.wako.plugins.videoplayer.Utilities.FilesUtils;
 import app.wako.plugins.videoplayer.Utilities.FragmentUtils;
 
 import java.util.ArrayList;
@@ -38,47 +35,27 @@ import org.json.JSONObject;
 )
 public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
-    // Permission alias constants
-    private static final String PERMISSION_DENIED_ERROR = "Unable to access media videos, user denied permission request";
-
-    static final String PUBLICSTORAGE = "publicStorage";
-    static final String MEDIAVIDEO = "mediaVideo";
-
     private WakoCapacitorVideoPlayer implementation;
     private static final String TAG = "WakoCapacitorVideoPlayer";
     private final int frameLayoutViewId = 256;
     private final int pickerLayoutViewId = 257;
 
     private Context context;
-    private String videoPath;
+    private String videoUrl;
     private JSONArray subtitles;
-    private String subTitlePath;
     private Boolean isTV;
-    private String fsPlayerId;
-    private String mode;
-    private Boolean exitOnEnd = true;
-    private Boolean loopOnEnd = false;
-    private Boolean pipEnabled = false;
-    private Boolean bkModeEnabled = false;
-    private Boolean showControls = true;
     private String displayMode = "all";
     private FullscreenExoPlayerFragment fsFragment;
-    private PickerVideoFragment pkFragment;
-    private FilesUtils filesUtils;
-    private JSObject headers;
     private FragmentUtils fragmentUtils;
     private PluginCall call;
     private final Float[] rateList = {0.25f, 0.5f, 0.75f, 1f, 2f, 4f};
     private Float videoRate = 1f;
     private String title;
     private String smallTitle;
-    private String accentColor;
     private Boolean chromecast = true;
     private String artwork;
     private String url;
-    private String playerId;
-    private String subtitle = "";
-    private String preferredLanguage = "";
+    private String preferredLocale = "";
     private JSObject subTitleOptions;
     private String subtitleTrackId;
     private String subtitleLocale;
@@ -92,20 +69,9 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         // Get context
         this.context = getContext();
         implementation = new WakoCapacitorVideoPlayer(this.context);
-        this.filesUtils = new FilesUtils(this.context);
         this.fragmentUtils = new FragmentUtils(getBridge());
     }
 
-    @PermissionCallback
-    private void permissionsCallback(PluginCall call) {
-        if (!isPermissionsGranted()) {
-            call.reject(PERMISSION_DENIED_ERROR);
-            return;
-        }
-        switch (call.getMethodName()) {
-            case "initPlayer" -> _initPlayer(call);
-        }
-    }
 
     @PluginMethod
     public void echo(PluginCall call) {
@@ -116,14 +82,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         call.resolve(ret);
     }
 
-    private boolean isPermissionsGranted() {
-        String permissionSet = PUBLICSTORAGE;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionSet = MEDIAVIDEO;
-        }
-        return getPermissionState(permissionSet) == PermissionState.GRANTED;
-    }
-
     @PluginMethod
     public void initPlayer(PluginCall call) {
         this.call = call;
@@ -132,20 +90,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         // Check if running on a TV Device
         isTV = isTvDevice(context);
         Log.d(TAG, "**** isTvDevice " + isTV + " ****");
-        String _mode = call.getString("mode");
-        if (_mode == null) {
-            ret.put("message", "Must provide a Mode (fullscreen/embedded)");
-            call.resolve(ret);
-            return;
-        }
-        mode = _mode;
-
-        playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
 
         videoRate = 1f;
         if (call.getData().has("rate")) {
@@ -155,160 +99,104 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             }
         }
 
-        Boolean _exitOnEnd = true;
-        if (call.getData().has("exitOnEnd")) {
-            _exitOnEnd = call.getBoolean("exitOnEnd");
-        }
-        exitOnEnd = _exitOnEnd;
-
-        Boolean _loopOnEnd = false;
-        if (call.getData().has("loopOnEnd")) {
-            _loopOnEnd = call.getBoolean("loopOnEnd");
-        }
-        if (!exitOnEnd) loopOnEnd = _loopOnEnd;
-
-
-        Boolean _pipEnabled = false;
-        if (call.getData().has("pipEnabled")) {
-            _pipEnabled = call.getBoolean("pipEnabled");
-        }
-        pipEnabled = _pipEnabled;
-
-
-        Boolean _bkModeEnabled = false;
-        if (call.getData().has("bkmodeEnabled")) {
-            _bkModeEnabled = call.getBoolean("bkmodeEnabled");
-        }
-        bkModeEnabled = _bkModeEnabled;
-
-        Boolean _showControls = true;
-        if (call.getData().has("showControls")) {
-            _showControls = call.getBoolean("showControls");
-        }
-        showControls = _showControls;
 
         String _displayMode = "all";
         if (call.getData().has("displayMode")) {
             _displayMode = call.getString("displayMode");
         }
         displayMode = _displayMode;
-        if ("fullscreen".equals(mode)) {
-            fsPlayerId = playerId;
-            url = call.getString("url");
-            if (url == null) {
-                ret.put("message", "Must provide an url");
-                call.resolve(ret);
-                return;
-            }
-            if (call.getData().has("subtitles")) {
-                try {
-                    subtitles = call.getArray("subtitles");
-                } catch (Exception e) {
-                    // Handle case where subtitles is not an array (for backward compatibility)
-                    String oldSubtitleUrl = call.getString("subtitles");
-                    if (oldSubtitleUrl != null && !oldSubtitleUrl.isEmpty()) {
-                        subtitles = new JSONArray();
-                        JSObject subtitleObj = new JSObject();
-                        subtitleObj.put("url", oldSubtitleUrl);
-                        subtitles.put(subtitleObj);
-                    }
-                }
-            }
-            if (call.getData().has("preferredLanguage")) {
-                preferredLanguage = call.getString("preferredLanguage");
-            }
-            subTitleOptions = new JSObject();
-            if (call.getData().has("subtitleOptions")) {
-                subTitleOptions = call.getObject("subtitleOptions");
-            }
 
-            JSObject _headers = new JSObject();
-            if (call.getData().has("headers")) {
-                _headers = call.getObject("headers");
-            }
-            headers = _headers;
-            String _title = "";
-            if (call.getData().has("title")) {
-                _title = call.getString("title");
-            }
-            title = _title;
-            String _smallTitle = "";
-            if (call.getData().has("smallTitle")) {
-                _smallTitle = call.getString("smallTitle");
-            }
-            smallTitle = _smallTitle;
-            String _accentColor = "";
-            if (call.getData().has("accentColor")) {
-                _accentColor = call.getString("accentColor");
-            }
-            accentColor = _accentColor;
-            Boolean _chromecast = true;
-            if (call.getData().has("chromecast")) {
-                _chromecast = call.getBoolean("chromecast");
-            }
-            chromecast = _chromecast;
-            String _artwork = "";
-            if (call.getData().has("artwork")) {
-                _artwork = call.getString("artwork");
-            }
-            artwork = _artwork;
-
-
-            subtitleTrackId = "";
-            if (call.getData().has("subtitleTrackId")) {
-                subtitleTrackId = call.getString("subtitleTrackId");
-            }
-
-            subtitleLocale = "";    
-            if (call.getData().has("subtitleLocale")) {
-                subtitleLocale = call.getString("subtitleLocale");
-            }
-
-            audioTrackId = "";
-            if (call.getData().has("audioTrackId")) {
-                audioTrackId = call.getString("audioTrackId");
-            }
-
-            audioLocale = "";
-            if (call.getData().has("audioLocale")) {
-                audioLocale = call.getString("audioLocale");
-            }
-            
-            startAtSec = 0;
-            if (call.getData().has("startAtSec")) {
-                startAtSec = call.getInt("startAtSec");
-            }
-
-
-            AddObserversToNotificationCenter();
-            Log.v(TAG, "display url: " + url);
-            Log.v(TAG, "display subtitles: " + subtitles);
-            Log.v(TAG, "display preferredLanguage: " + preferredLanguage);
-            Log.v(TAG, "headers: " + headers);
-            Log.v(TAG, "title: " + title);
-            Log.v(TAG, "smallTitle: " + smallTitle);
-            Log.v(TAG, "accentColor: " + accentColor);
-            Log.v(TAG, "chromecast: " + chromecast);
-            Log.v(TAG, "artwork: " + artwork);
-            if (url.equals("internal") || url.contains("DCIM") || url.contains("Documents")) {
-                // Check for permissions to access media video files
-                if (isPermissionsGranted()) {
-                    _initPlayer(call);
-                } else {
-                    this.bridge.saveCall(call);
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        requestPermissionForAlias(MEDIAVIDEO, call, "permissionsCallback");
-                    } else {
-                        requestPermissionForAlias(PUBLICSTORAGE, call, "permissionsCallback");
-                    }
-                }
-            } else {
-                _initPlayer(call);
-            }
-        } else if ("embedded".equals(mode)) {
-            ret.put("message", "Embedded Mode not implemented");
+        url = call.getString("url");
+        if (url == null) {
+            ret.put("message", "Must provide an url");
             call.resolve(ret);
+            return;
         }
+
+        // Reset subtitles for each new video
+        subtitles = null;
+
+        if (call.getData().has("subtitles")) {
+            try {
+                subtitles = call.getArray("subtitles");
+            } catch (Exception e) {
+                // Handle case where subtitles is not an array (for backward compatibility)
+                String oldSubtitleUrl = call.getString("subtitles");
+                if (oldSubtitleUrl != null && !oldSubtitleUrl.isEmpty()) {
+                    subtitles = new JSONArray();
+                    JSObject subtitleObj = new JSObject();
+                    subtitleObj.put("url", oldSubtitleUrl);
+                    subtitles.put(subtitleObj);
+                }
+            }
+        }
+        if (call.getData().has("preferredLocale")) {
+            preferredLocale = call.getString("preferredLocale");
+        }
+        subTitleOptions = new JSObject();
+        if (call.getData().has("subtitleOptions")) {
+            subTitleOptions = call.getObject("subtitleOptions");
+        }
+
+        String _title = "";
+        if (call.getData().has("title")) {
+            _title = call.getString("title");
+        }
+        title = _title;
+        String _smallTitle = "";
+        if (call.getData().has("smallTitle")) {
+            _smallTitle = call.getString("smallTitle");
+        }
+        smallTitle = _smallTitle;
+        Boolean _chromecast = true;
+        if (call.getData().has("chromecast")) {
+            _chromecast = call.getBoolean("chromecast");
+        }
+        chromecast = _chromecast;
+        String _artwork = "";
+        if (call.getData().has("artwork")) {
+            _artwork = call.getString("artwork");
+        }
+        artwork = _artwork;
+
+
+        subtitleTrackId = "";
+        if (call.getData().has("subtitleTrackId")) {
+            subtitleTrackId = call.getString("subtitleTrackId");
+        }
+
+        subtitleLocale = "";
+        if (call.getData().has("subtitleLocale")) {
+            subtitleLocale = call.getString("subtitleLocale");
+        }
+
+        audioTrackId = "";
+        if (call.getData().has("audioTrackId")) {
+            audioTrackId = call.getString("audioTrackId");
+        }
+
+        audioLocale = "";
+        if (call.getData().has("audioLocale")) {
+            audioLocale = call.getString("audioLocale");
+        }
+
+        startAtSec = 0;
+        if (call.getData().has("startAtSec")) {
+            startAtSec = call.getInt("startAtSec", 0);
+        }
+
+
+        AddObserversToNotificationCenter();
+        Log.v(TAG, "display url: " + url);
+        Log.v(TAG, "display subtitles: " + subtitles);
+        Log.v(TAG, "display preferredLocale: " + preferredLocale);
+        Log.v(TAG, "title: " + title);
+        Log.v(TAG, "smallTitle: " + smallTitle);
+        Log.v(TAG, "chromecast: " + chromecast);
+        Log.v(TAG, "artwork: " + artwork);
+
+        _initPlayer(call);
+
     }
 
     @PluginMethod
@@ -323,33 +211,28 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "isPlaying");
-                                    if (fsFragment != null) {
-                                        boolean playing = fsFragment.isPlaying();
-                                        ret.put("result", true);
-                                        ret.put("value", playing);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "isPlaying");
+                                if (fsFragment != null) {
+                                    boolean playing = fsFragment.isPlaying();
+                                    ret.put("result", true);
+                                    ret.put("value", playing);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -357,41 +240,30 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "play");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "play");
-                                    if (fsFragment != null) {
-                                        fsFragment.play();
-                                        boolean playing = fsFragment.isPlaying();
-                                        ret.put("result", true);
-                                        ret.put("value", true);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "play");
+                                if (fsFragment != null) {
+                                    fsFragment.play();
+                                    boolean playing = fsFragment.isPlaying();
+                                    ret.put("result", true);
+                                    ret.put("value", true);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -399,40 +271,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "pause");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "pause");
-                                    if (fsFragment != null) {
-                                        fsFragment.pause();
-                                        ret.put("result", true);
-                                        ret.put("value", true);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "pause");
+                                if (fsFragment != null) {
+                                    fsFragment.pause();
+                                    ret.put("result", true);
+                                    ret.put("value", true);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -441,39 +302,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("method", "getDuration");
         String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "getDuration");
-                                    if (fsFragment != null) {
-                                        int duration = fsFragment.getDuration();
-                                        ret.put("result", true);
-                                        ret.put("value", duration);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "getDuration");
+                                if (fsFragment != null) {
+                                    int duration = fsFragment.getDuration();
+                                    ret.put("result", true);
+                                    ret.put("value", duration);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -481,40 +332,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "getCurrentTime");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "getCurrentTime");
-                                    if (fsFragment != null) {
-                                        int curTime = fsFragment.getCurrentTime();
-                                        ret.put("result", true);
-                                        ret.put("value", curTime);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "getCurrentTime");
+                                if (fsFragment != null) {
+                                    int curTime = fsFragment.getCurrentTime();
+                                    ret.put("result", true);
+                                    ret.put("value", curTime);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -522,13 +362,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "setCurrentTime");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
+
         Double value = call.getDouble("seektime");
         if (value == null) {
             ret.put("result", false);
@@ -537,33 +371,28 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             return;
         }
         final int cTime = (int) Math.round(value);
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "setCurrentTime");
-                                    if (fsFragment != null) {
-                                        fsFragment.setCurrentTime(cTime);
-                                        ret.put("result", true);
-                                        ret.put("value", cTime);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "setCurrentTime");
+                                if (fsFragment != null) {
+                                    fsFragment.setCurrentTime(cTime);
+                                    ret.put("result", true);
+                                    ret.put("value", cTime);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -571,40 +400,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "getVolume");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "getVolume");
-                                    if (fsFragment != null) {
-                                        Float volume = fsFragment.getVolume();
-                                        ret.put("result", true);
-                                        ret.put("value", volume);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "getVolume");
+                                if (fsFragment != null) {
+                                    Float volume = fsFragment.getVolume();
+                                    ret.put("result", true);
+                                    ret.put("value", volume);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -612,13 +430,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "setVolume");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
+
         Float volume = call.getFloat("volume");
         if (volume == null) {
             ret.put("result", false);
@@ -627,33 +439,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "setVolume");
-                                    if (fsFragment != null) {
-                                        fsFragment.setVolume(volume);
-                                        ret.put("result", true);
-                                        ret.put("value", volume);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "setVolume");
+                                if (fsFragment != null) {
+                                    fsFragment.setVolume(volume);
+                                    ret.put("result", true);
+                                    ret.put("value", volume);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -661,40 +469,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "getMuted");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "getMuted");
-                                    if (fsFragment != null) {
-                                        boolean value = fsFragment.getMuted();
-                                        ret.put("result", true);
-                                        ret.put("value", value);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "getMuted");
+                                if (fsFragment != null) {
+                                    boolean value = fsFragment.getMuted();
+                                    ret.put("result", true);
+                                    ret.put("value", value);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -702,13 +499,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "setMuted");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
+
         Boolean value = call.getBoolean("muted");
         if (value == null) {
             ret.put("result", true);
@@ -717,33 +508,28 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
             return;
         }
         final boolean bValue = value;
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "setMuted");
-                                    if (fsFragment != null) {
-                                        fsFragment.setMuted(bValue);
-                                        ret.put("result", true);
-                                        ret.put("value", bValue);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "setMuted");
+                                if (fsFragment != null) {
+                                    fsFragment.setMuted(bValue);
+                                    ret.put("result", true);
+                                    ret.put("value", bValue);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -752,39 +538,29 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("method", "getRate");
         String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "getRate");
-                                    if (fsFragment != null) {
-                                        Float rate = fsFragment.getRate();
-                                        ret.put("result", true);
-                                        ret.put("value", rate);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "getRate");
+                                if (fsFragment != null) {
+                                    Float rate = fsFragment.getRate();
+                                    ret.put("result", true);
+                                    ret.put("value", rate);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -792,13 +568,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "setRate");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
+
         Float rate = call.getFloat("rate");
         if (rate == null) {
             ret.put("result", false);
@@ -812,33 +582,28 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         } else {
             videoRate = 1f;
         }
-        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
-            bridge
-                    .getActivity()
-                    .runOnUiThread(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    JSObject ret = new JSObject();
-                                    ret.put("method", "setRate");
-                                    if (fsFragment != null) {
-                                        fsFragment.setRate(videoRate);
-                                        ret.put("result", true);
-                                        ret.put("value", videoRate);
-                                        call.resolve(ret);
-                                    } else {
-                                        ret.put("result", false);
-                                        ret.put("message", "Fullscreen fragment is not defined");
-                                        call.resolve(ret);
-                                    }
+        bridge
+                .getActivity()
+                .runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                JSObject ret = new JSObject();
+                                ret.put("method", "setRate");
+                                if (fsFragment != null) {
+                                    fsFragment.setRate(videoRate);
+                                    ret.put("result", true);
+                                    ret.put("value", videoRate);
+                                    call.resolve(ret);
+                                } else {
+                                    ret.put("result", false);
+                                    ret.put("message", "Fullscreen fragment is not defined");
+                                    call.resolve(ret);
                                 }
                             }
-                    );
-        } else {
-            ret.put("result", false);
-            ret.put("message", "player is not defined");
-            call.resolve(ret);
-        }
+                        }
+                );
+
     }
 
     @PluginMethod
@@ -918,32 +683,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                 );
     }
 
-    @PluginMethod
-    public void enableSubtitles(PluginCall call) {
-        this.call = call;
-        boolean enabled = call.getBoolean("enabled", true);
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "enableSubtitles");
-                                if (fsFragment != null) {
-                                    fsFragment.enableSubtitles(enabled);
-                                    ret.put("result", true);
-                                    ret.put("value", enabled);
-                                    call.resolve(ret);
-                                } else {
-                                    ret.put("result", false);
-                                    ret.put("message", "Fullscreen fragment is not defined");
-                                    call.resolve(ret);
-                                }
-                            }
-                        }
-                );
-    }
 
     @PluginMethod
     public void exitPlayer(PluginCall call) {
@@ -990,9 +729,9 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
 
     private void _initPlayer(PluginCall call) {
         // get the videoPath
-        videoPath = filesUtils.getFilePath(url);
+        videoUrl = url;
 
-        if (videoPath == null) {
+        if (videoUrl == null) {
             Map<String, Object> info = new HashMap<String, Object>() {
                 {
                     put("dismiss", "1");
@@ -1006,15 +745,15 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         }
 
         // get the subTitlePath if any
-        ArrayList<FullscreenExoPlayerFragment.SubtitleItem> subtitleItems = new ArrayList<>();
+        ArrayList<SubtitleItem> subtitleItems = new ArrayList<>();
         if (subtitles != null && subtitles.length() > 0) {
             for (int i = 0; i < subtitles.length(); i++) {
                 try {
-                    // Créer un nouvel objet JSObject à partir des données de l'objet JSONObject
+                    // Create a new JSObject from the JSONObject data
                     JSONObject jsonObj = subtitles.getJSONObject(i);
                     JSObject subtitleObj = new JSObject();
-                    
-                    // Copier les propriétés nécessaires
+
+                    // Copy the necessary properties
                     if (jsonObj.has("url")) {
                         subtitleObj.put("url", jsonObj.getString("url"));
                     }
@@ -1024,43 +763,33 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                     if (jsonObj.has("lang")) {
                         subtitleObj.put("lang", jsonObj.getString("lang"));
                     }
-                    
+
                     String url = subtitleObj.getString("url");
                     if (url != null && !url.isEmpty()) {
-                        String subTitlePath = filesUtils.getFilePath(url);
                         String name = subtitleObj.has("name") ? subtitleObj.getString("name") : null;
                         String lang = subtitleObj.has("lang") ? subtitleObj.getString("lang") : null;
-                        subtitleItems.add(new FullscreenExoPlayerFragment.SubtitleItem(subTitlePath, name, lang));
+                        subtitleItems.add(new SubtitleItem(url, name, lang));
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error parsing subtitle item: " + e.getMessage());
                 }
             }
         }
-        Log.v(TAG, "*** calculated videoPath: " + videoPath);
+        Log.v(TAG, "*** calculated videoPath: " + videoUrl);
         Log.v(TAG, "*** parsed " + subtitleItems.size() + " subtitles");
 
         fsFragment =
                 implementation.createFullScreenFragment(
-                        videoPath,
-                        videoRate,
-                        exitOnEnd,
-                        loopOnEnd,
-                        pipEnabled,
-                        bkModeEnabled,
-                        showControls,
+                        videoUrl,
                         displayMode,
                         subtitleItems,
-                        preferredLanguage,
+                        preferredLocale,
                         subTitleOptions,
-                        headers,
                         title,
                         smallTitle,
-                        accentColor,
                         chromecast,
                         artwork,
                         isTV,
-                        playerId,
                         subtitleTrackId,
                         subtitleLocale,
                         audioTrackId,
@@ -1102,41 +831,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                 );
     }
 
-    private void createPickerVideoFragment(final PluginCall call) {
-        pkFragment = implementation.createPickerVideoFragment();
 
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "initPlayer");
-                                FrameLayout pickerLayoutView = getBridge().getActivity().findViewById(pickerLayoutViewId);
-                                if (pickerLayoutView != null) {
-                                    ret.put("result", false);
-                                    ret.put("message", "FrameLayout for VideoPicker already exists");
-                                } else {
-                                    // Initialize a new FrameLayout as container for fragment
-                                    pickerLayoutView = new FrameLayout(getActivity().getApplicationContext());
-                                    pickerLayoutView.setId(pickerLayoutViewId);
-                                    FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                                            FrameLayout.LayoutParams.MATCH_PARENT,
-                                            FrameLayout.LayoutParams.MATCH_PARENT
-                                    );
-                                    // Apply the Layout Parameters to frameLayout
-                                    pickerLayoutView.setLayoutParams(lp);
-
-                                    ((ViewGroup) getBridge().getWebView().getParent()).addView(pickerLayoutView);
-                                    fragmentUtils.loadFragment(pkFragment, pickerLayoutViewId);
-                                    ret.put("result", true);
-                                }
-                                call.resolve(ret);
-                            }
-                        }
-                );
-    }
 
     private Boolean isInRate(Float[] arr, Float rate) {
         Boolean ret = false;
@@ -1172,7 +867,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
                             @Override
                             public void run() {
                                 JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 notifyListeners("playerPause", data);
                             }
@@ -1181,12 +875,11 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         NotificationCenter
                 .defaultCenter()
                 .addMethodForNotification(
-                        "playerItemReady",
+                        "playerStateReady",
                         new MyRunnable() {
                             @Override
                             public void run() {
                                 JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 notifyListeners("playerReady", data);
                             }
@@ -1195,12 +888,11 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         NotificationCenter
                 .defaultCenter()
                 .addMethodForNotification(
-                        "playerItemEnd",
+                        "playerStateEnd",
                         new MyRunnable() {
                             @Override
                             public void run() {
                                 final JSObject data = new JSObject();
-                                data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                                 data.put("currentTime", this.getInfo().get("currentTime"));
                                 bridge
                                         .getActivity()

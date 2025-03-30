@@ -23,6 +23,94 @@
       app:animation_enabled="false"
       android:animateLayoutChanges="true"
       app:controller_layout_id="@layout/exo_playback_control_view"/>
+    <!-- Rewind indicator (-10s) -->
+    <TextView
+        android:id="@+id/rewind_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="-10s"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp"
+        android:background="@drawable/circle_background"
+        android:padding="12dp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginStart="40dp" />
+
+    <!-- Fast forward indicator (+10s) -->
+    <TextView
+        android:id="@+id/forward_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="+10s"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp"
+        android:background="@drawable/circle_background"
+        android:padding="12dp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginEnd="40dp" />
+        
+    <!-- Brightness indicator -->
+    <TextView
+        android:id="@+id/brightness_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:background="#80000000"
+        android:padding="16dp"
+        android:drawableLeft="@drawable/ic_brightness_medium_24"
+        android:drawablePadding="8dp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.4" />
+
+    <!-- Volume indicator -->
+    <TextView
+        android:id="@+id/volume_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:background="#80000000"
+        android:padding="16dp"
+        android:drawableLeft="@drawable/ic_volume_up_24dp"
+        android:drawablePadding="8dp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.4" />
+
+    <!-- Seek indicator -->
+    <TextView
+        android:id="@+id/seek_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:background="#80000000"
+        android:padding="16dp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.4" />
 
     <ProgressBar
         android:id="@+id/indeterminateBar"

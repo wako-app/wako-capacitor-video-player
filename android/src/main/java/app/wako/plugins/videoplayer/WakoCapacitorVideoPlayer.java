@@ -6,7 +6,8 @@ import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
 
 import com.getcapacitor.JSObject;
-import app.wako.plugins.videoplayer.PickerVideo.PickerVideoFragment;
+
+import app.wako.plugins.videoplayer.Components.SubtitleItem;
 
 import java.util.ArrayList;
 
@@ -20,25 +21,16 @@ public class WakoCapacitorVideoPlayer {
 
     @OptIn(markerClass = UnstableApi.class)
     public FullscreenExoPlayerFragment createFullScreenFragment(
-        String videoPath,
-        Float videoRate,
-        Boolean exitOnEnd,
-        Boolean loopOnEnd,
-        Boolean pipEnabled,
-        Boolean bkModeEnabled,
-        Boolean showControls,
+        String videoUrl,
         String displayMode,
-        ArrayList<FullscreenExoPlayerFragment.SubtitleItem> subtitles,
-        String preferredLanguage,
+        ArrayList<SubtitleItem> subtitles,
+        String preferredLocale,
         JSObject subTitleOptions,
-        JSObject headers,
         String title,
         String smallTitle,
-        String accentColor,
         Boolean chromecast,
         String artwork,
         Boolean isTV,
-        String playerId,
         String subtitleTrackId,
         String subtitleLocale,
         String audioTrackId,
@@ -47,27 +39,16 @@ public class WakoCapacitorVideoPlayer {
     ) {
         FullscreenExoPlayerFragment fsFragment = new FullscreenExoPlayerFragment();
 
-        fsFragment.videoPath = videoPath;
-        fsFragment.playbackRate = videoRate;
-        fsFragment.shouldExitOnEnd = exitOnEnd;
-        fsFragment.shouldLoopOnEnd = loopOnEnd;
-        fsFragment.isPipEnabled = pipEnabled;
-        fsFragment.isBackgroundModeEnabled = bkModeEnabled;
-        fsFragment.showControls = showControls;
+        fsFragment.videoUrl = videoUrl;
         fsFragment.displayMode = displayMode;
         fsFragment.subtitles = subtitles;
-        fsFragment.preferredLocale = preferredLanguage;
+        fsFragment.preferredLocale = preferredLocale;
         fsFragment.subTitleOptions = subTitleOptions;
-        fsFragment.requestHeaders = headers;
         fsFragment.videoTitle = title;
         fsFragment.videoSubtitle = smallTitle;
-        fsFragment.themeColor = accentColor;
         fsFragment.isChromecastEnabled = chromecast;
         fsFragment.posterUrl = artwork;
         fsFragment.isTvDevice = isTV;
-        fsFragment.playerId = playerId;
-        fsFragment.isLocalFile = false;
-        fsFragment.videoId = null;
         fsFragment.subtitleTrackId = subtitleTrackId;
         fsFragment.subtitleLocale = subtitleLocale;
         fsFragment.audioTrackId = audioTrackId;
@@ -77,7 +58,4 @@ public class WakoCapacitorVideoPlayer {
         return fsFragment;
     }
 
-    public PickerVideoFragment createPickerVideoFragment() {
-        return new PickerVideoFragment();
-    }
 }

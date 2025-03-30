@@ -14,6 +14,7 @@
   xmlns:android="http://schemas.android.com/apk/res/android"
   xmlns:app="http://schemas.android.com/apk/res-auto"
   xmlns:tools="http://schemas.android.com/tools"
+  android:id="@+id/exo_constraint_layout"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:background="@color/black_80"
@@ -27,7 +28,8 @@
   <View
     android:id="@id/exo_controls_background"
     android:layout_width="match_parent"
-    android:layout_height="match_parent" />
+    android:layout_height="match_parent"
+      />
 
   <ImageView
     android:id="@+id/cast_image"
@@ -115,14 +117,6 @@
           android:background="?actionBarItemBackground"
           android:visibility="gone"/>
 
-        <ImageButton
-          android:id="@+id/exo_pip"
-          android:layout_width="48dp"
-          android:layout_height="48dp"
-          android:background="?actionBarItemBackground"
-          android:src="@drawable/ic_pip_white"
-          android:visibility="gone"
-          android:contentDescription="Picture in picture button"/>
 
         <ImageButton
           android:id="@+id/exo_resize"
@@ -204,7 +198,7 @@
 
       <!-- Custom subtitle toggle button -->
       <ImageButton
-          android:id="@+id/custom_subtitle_toggle"
+          android:id="@+id/subtitle_toggle"
           style="@style/ExoStyledControls.Button.Bottom.CC"
           android:layout_width="wrap_content"
           android:layout_height="wrap_content"
