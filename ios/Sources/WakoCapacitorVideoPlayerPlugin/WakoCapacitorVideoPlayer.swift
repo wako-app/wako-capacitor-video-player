@@ -542,6 +542,14 @@ class PlayerViewController: UIViewController {
         // Create alert controller
         let alert = UIAlertController(title: "Select Subtitle", message: nil, preferredStyle: .actionSheet)
         
+        // Configure popover for iPad
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = subtitleButton
+                popover.sourceRect = subtitleButton.bounds
+            }
+        }
+        
         // Add the Disable option first
         let disableAction = UIAlertAction(title: "Disable", style: .default) { _ in
             print("[WakoCapacitorVideoPlayer] Disabling subtitles")
@@ -751,6 +759,14 @@ class PlayerViewController: UIViewController {
         }
         
         let alert = UIAlertController(title: "Select Audio Track", message: nil, preferredStyle: .actionSheet)
+        
+        // Configure popover for iPad
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = audioTrackButton
+                popover.sourceRect = audioTrackButton.bounds
+            }
+        }
         
         var hasDisableOption = false
         for name in audioNames {
