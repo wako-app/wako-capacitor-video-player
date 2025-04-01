@@ -241,29 +241,48 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("method", "play");
 
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "play");
-                                if (fsFragment != null) {
-                                    fsFragment.play();
-                                    boolean playing = fsFragment.isPlaying();
-                                    ret.put("result", true);
-                                    ret.put("value", true);
-                                    call.resolve(ret);
-                                } else {
-                                    ret.put("result", false);
-                                    ret.put("message", "Fullscreen fragment is not defined");
-                                    call.resolve(ret);
+        try {
+            bridge
+                    .getActivity()
+                    .runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        JSObject ret = new JSObject();
+                                        ret.put("method", "play");
+                                        
+                                        // Check if fragment is still valid
+                                        if (fsFragment != null) {
+                                            // Synchronize to avoid any race conditions
+                                            synchronized (fsFragment) {
+                                                fsFragment.play();
+                                                boolean playing = fsFragment.isPlaying();
+                                            }
+                                            ret.put("result", true);
+                                            ret.put("value", true);
+                                            call.resolve(ret);
+                                        } else {
+                                            ret.put("result", false);
+                                            ret.put("message", "Fullscreen fragment is not defined");
+                                            call.resolve(ret);
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error during play method execution", e);
+                                        JSObject errorRet = new JSObject();
+                                        errorRet.put("result", false);
+                                        errorRet.put("message", "Error during play: " + e.getMessage());
+                                        call.resolve(errorRet);
+                                    }
                                 }
                             }
-                        }
-                );
-
+                    );
+        } catch (Exception e) {
+            Log.e(TAG, "Error dispatching play to UI thread", e);
+            ret.put("result", false);
+            ret.put("message", "Error dispatching play: " + e.getMessage());
+            call.resolve(ret);
+        }
     }
 
     @PluginMethod
@@ -272,28 +291,47 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("method", "pause");
 
-        bridge
-                .getActivity()
-                .runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                JSObject ret = new JSObject();
-                                ret.put("method", "pause");
-                                if (fsFragment != null) {
-                                    fsFragment.pause();
-                                    ret.put("result", true);
-                                    ret.put("value", true);
-                                    call.resolve(ret);
-                                } else {
-                                    ret.put("result", false);
-                                    ret.put("message", "Fullscreen fragment is not defined");
-                                    call.resolve(ret);
+        try {
+            bridge
+                    .getActivity()
+                    .runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        JSObject ret = new JSObject();
+                                        ret.put("method", "pause");
+                                        
+                                        // Check if fragment is still valid
+                                        if (fsFragment != null) {
+                                            // Synchronize to avoid any race conditions
+                                            synchronized (fsFragment) {
+                                                fsFragment.pause();
+                                            }
+                                            ret.put("result", true);
+                                            ret.put("value", true);
+                                            call.resolve(ret);
+                                        } else {
+                                            ret.put("result", false);
+                                            ret.put("message", "Fullscreen fragment is not defined");
+                                            call.resolve(ret);
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error during pause method execution", e);
+                                        JSObject errorRet = new JSObject();
+                                        errorRet.put("result", false);
+                                        errorRet.put("message", "Error during pause: " + e.getMessage());
+                                        call.resolve(errorRet);
+                                    }
                                 }
                             }
-                        }
-                );
-
+                    );
+        } catch (Exception e) {
+            Log.e(TAG, "Error dispatching pause to UI thread", e);
+            ret.put("result", false);
+            ret.put("message", "Error dispatching pause: " + e.getMessage());
+            call.resolve(ret);
+        }
     }
 
     @PluginMethod

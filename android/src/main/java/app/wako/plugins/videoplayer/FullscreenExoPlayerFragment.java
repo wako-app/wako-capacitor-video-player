@@ -1416,106 +1416,122 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_MEDIA_PLAY:
-            case KeyEvent.KEYCODE_MEDIA_PAUSE:
-            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-            case KeyEvent.KEYCODE_BUTTON_SELECT:
-                if (player == null) break;
-                if (keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
-                    player.pause();
-                } else if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY) {
-                    player.play();
-                } else if (player.isPlaying()) {
-                    player.pause();
-                } else {
-                    player.play();
-                }
-                return true;
+        try {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_MEDIA_PLAY:
+                case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                    if (player == null) {
+                        Log.w(TAG, "Media key event received but player is null: " + keyCode);
+                        break;
+                    }
+                    try {
+                        if (keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                            player.pause();
+                            Log.d(TAG, "Media PAUSE key pressed - player paused");
+                        } else if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY) {
+                            player.play();
+                            Log.d(TAG, "Media PLAY key pressed - player started");
+                        } else if (player.isPlaying()) {
+                            player.pause();
+                            Log.d(TAG, "Media PLAY/PAUSE key pressed - player was playing, now paused");
+                        } else {
+                            player.play();
+                            Log.d(TAG, "Media PLAY/PAUSE key pressed - player was paused, now playing");
+                        }
+                        return true;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error handling media key: " + keyCode, e);
+                        return false;
+                    }
 
-            case KeyEvent.KEYCODE_BUTTON_START:
-            case KeyEvent.KEYCODE_BUTTON_A:
-            case KeyEvent.KEYCODE_ENTER:
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_NUMPAD_ENTER:
-            case KeyEvent.KEYCODE_SPACE:
-                if (player == null) break;
-                if (!controllerVisibleFully) {
-                    if (player.isPlaying()) {
-                        player.pause();
-                    } else {
-                        player.play();
-                    }
-                    return true;
-                }
-                break;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_BUTTON_L2:
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-                if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
-                    if (isCasting && castPlayer != null) {
-                        // During casting, ensure consistent 10 second rewind
-                        try {
-                            long pos = castPlayer.getCurrentPosition();
-                            long seekTo = Math.max(0, pos - 10_000);
-                            castPlayer.seekTo(seekTo);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error seeking in cast player", e);
+                case KeyEvent.KEYCODE_BUTTON_START:
+                case KeyEvent.KEYCODE_BUTTON_A:
+                case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                case KeyEvent.KEYCODE_SPACE:
+                    if (player == null) break;
+                    if (!controllerVisibleFully) {
+                        if (player.isPlaying()) {
+                            player.pause();
+                        } else {
+                            player.play();
                         }
                         return true;
-                    } else if (player != null) {
-                        long pos = player.getCurrentPosition();
-                        long seekTo = pos - 10_000;
-                        if (seekTo < 0) seekTo = 0;
-                        player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
-                        player.seekTo(seekTo);
-                        return true;
                     }
-                }
-                break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-            case KeyEvent.KEYCODE_BUTTON_R2:
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-                    if (isCasting && castPlayer != null) {
-                        // During casting, ensure consistent 10 second forward
-                        try {
-                            long pos = castPlayer.getCurrentPosition();
-                            long duration = castPlayer.getDuration();
-                            long seekTo = Math.min(duration, pos + 10_000);
-                            castPlayer.seekTo(seekTo);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error seeking in cast player", e);
+                    break;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_BUTTON_L2:
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                    if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
+                        if (isCasting && castPlayer != null) {
+                            // During casting, ensure consistent 10 second rewind
+                            try {
+                                long pos = castPlayer.getCurrentPosition();
+                                long seekTo = Math.max(0, pos - 10_000);
+                                castPlayer.seekTo(seekTo);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error seeking in cast player", e);
+                            }
+                            return true;
+                        } else if (player != null) {
+                            long pos = player.getCurrentPosition();
+                            long seekTo = pos - 10_000;
+                            if (seekTo < 0) seekTo = 0;
+                            player.setSeekParameters(SeekParameters.PREVIOUS_SYNC);
+                            player.seekTo(seekTo);
+                            return true;
                         }
-                        return true;
-                    } else if (player != null) {
-                        long pos = player.getCurrentPosition();
-                        long seekTo = pos + 10_000;
-                        long seekMax = player.getDuration();
-                        if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
-                        player.setSeekParameters(SeekParameters.NEXT_SYNC);
-                        player.seekTo(seekTo);
-                        return true;
                     }
-                }
-                break;
-            case KeyEvent.KEYCODE_BACK:
-                if (isTvDevice) {
-                    if (controllerVisible && player != null && player.isPlaying()) {
-                        playerView.hideController();
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_BUTTON_R2:
+                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                    if (!controllerVisibleFully || keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+                        if (isCasting && castPlayer != null) {
+                            // During casting, ensure consistent 10 second forward
+                            try {
+                                long pos = castPlayer.getCurrentPosition();
+                                long duration = castPlayer.getDuration();
+                                long seekTo = Math.min(duration, pos + 10_000);
+                                castPlayer.seekTo(seekTo);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error seeking in cast player", e);
+                            }
+                            return true;
+                        } else if (player != null) {
+                            long pos = player.getCurrentPosition();
+                            long seekTo = pos + 10_000;
+                            long seekMax = player.getDuration();
+                            if (seekMax != C.TIME_UNSET && seekTo > seekMax) seekTo = seekMax;
+                            player.setSeekParameters(SeekParameters.NEXT_SYNC);
+                            player.seekTo(seekTo);
+                            return true;
+                        }
+                    }
+                    break;
+                case KeyEvent.KEYCODE_BACK:
+                    if (isTvDevice) {
+                        if (controllerVisible && player != null && player.isPlaying()) {
+                            playerView.hideController();
+                        } else {
+                            backPressed();
+                        }
                     } else {
                         backPressed();
                     }
-                } else {
-                    backPressed();
-                }
-                break;
-            default:
-                if (!controllerVisibleFully) {
-                    playerView.showController();
-                    return true;
-                }
-                break;
+                    break;
+                default:
+                    if (!controllerVisibleFully) {
+                        playerView.showController();
+                        return true;
+                    }
+                    break;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onKeyDown handling keyCode: " + keyCode, e);
         }
         return false;
     }
@@ -1534,25 +1550,34 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Starts or resumes playback.
      */
     public void play() {
-        if (player != null) {
-            // Ensure volume is correctly set when playback starts
-            if (mAudioManager != null) {
-                float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                float normalizedVolume = currentVolume / maxVolume;
-                setVolumeLevel(normalizedVolume);
-                System.out.println("!!!! VIDEO_VOLUME: Volume set in play(): " + normalizedVolume);
-                Log.e(TAG_VOLUME, "Volume set in play(): " + normalizedVolume);
-            }
+        try {
+            if (player != null) {
+                // Ensure volume is correctly set when playback starts
+                if (mAudioManager != null) {
+                    float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    float normalizedVolume = currentVolume / maxVolume;
+                    setVolumeLevel(normalizedVolume);
+                    System.out.println("!!!! VIDEO_VOLUME: Volume set in play(): " + normalizedVolume);
+                    Log.e(TAG_VOLUME, "Volume set in play(): " + normalizedVolume);
+                }
 
-            PlaybackParameters param = new PlaybackParameters(playbackRate);
-            player.setPlaybackParameters(param);
+                PlaybackParameters param = new PlaybackParameters(playbackRate);
+                player.setPlaybackParameters(param);
 
-            /* If the user start the cast before the player is ready and playing, then the video will start
-              in the device and chromecast at the same time. This is to avoid that behaviour.*/
-            if (!isCasting) {
-                player.setPlayWhenReady(true);
+                /* If the user start the cast before the player is ready and playing, then the video will start
+                in the device and chromecast at the same time. This is to avoid that behaviour.*/
+                if (!isCasting) {
+                    player.setPlayWhenReady(true);
+                    Log.v(TAG, "play() called - player started successfully");
+                } else {
+                    Log.v(TAG, "play() called during casting - ignoring for local player");
+                }
+            } else {
+                Log.w(TAG, "play() called but player is null");
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in play() method", e);
         }
     }
 
@@ -1560,7 +1585,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
      * Pauses playback.
      */
     public void pause() {
-        if (player != null) player.setPlayWhenReady(false);
+        try {
+            if (player != null) {
+                player.setPlayWhenReady(false);
+                Log.v(TAG, "pause() called - player paused successfully");
+            } else {
+                Log.w(TAG, "pause() called but player is null");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in pause() method", e);
+        }
     }
 
     /**
