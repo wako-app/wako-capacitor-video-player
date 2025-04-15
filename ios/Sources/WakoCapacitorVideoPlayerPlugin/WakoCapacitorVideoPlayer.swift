@@ -216,22 +216,22 @@ public class WakoCapacitorVideoPlayer {
 }
 
 class PlayerViewController: UIViewController {
-    private var hasStartedPlaying = false
-    private let mediaPlayer: VLCMediaPlayer
-    private let videoView = UIView()
-    private let controlsView = UIView()
-    private let titleLabel = UILabel()
-    private let playPauseButton = UIButton(type: .system)
-    private let closeButton = UIButton(type: .system)
-    private let seekBar = UISlider()
-    private let subtitleButton = UIButton(type: .system)
-    private let audioTrackButton = UIButton(type: .system)
-    private let loadingIndicator = UIActivityIndicatorView(style: .large)
-    private let currentTimeLabel = UILabel()
-    private let totalTimeLabel = UILabel()
-    private let castButton = UIButton(type: .system)
+    private var mediaPlayer: VLCMediaPlayer
+    private var videoView = UIView()
+    private var controlsView = UIView()
+    private var titleLabel = UILabel()
+    private var playPauseButton = UIButton(type: .system)
+    private var closeButton = UIButton(type: .system)
+    private var seekBar = UISlider()
+    private var subtitleButton = UIButton(type: .system)
+    private var audioTrackButton = UIButton(type: .system)
+    private var loadingIndicator = UIActivityIndicatorView(style: .large)
+    private var currentTimeLabel = UILabel()
+    private var totalTimeLabel = UILabel()
+    private var castButton = UIButton(type: .system)
     private var controlsTimer: Timer?
     private var isControlsVisible = true
+    private var hasStartedPlaying = false
     
     private var rewindIndicator: UIView?
     private var forwardIndicator: UIView?
@@ -301,11 +301,21 @@ class PlayerViewController: UIViewController {
         resetControlsTimer()
         
         checkAirPlayAvailability()
+        
+        // Enable keyboard support
+        becomeFirstResponder()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         modalPresentationStyle = .fullScreen
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        // Disable keyboard support
+        resignFirstResponder()
     }
 
     private func setupUI() {
@@ -1339,6 +1349,96 @@ class PlayerViewController: UIViewController {
             self.mediaPlayer.delegate = self
             self.updatePlayPauseButton()
             self.loadingIndicator.startAnimating()
+        }
+    }
+
+    // Support for external keyboard events
+    override var canBecomeFirstResponder: Bool {
+        return true
+    }
+    
+    override var keyCommands: [UIKeyCommand]? {
+        return [
+            // Fast forward & rewind
+            UIKeyCommand(input: "\u{F703}", modifierFlags: [], action: #selector(handleRightArrow)),
+            UIKeyCommand(input: "\u{F702}", modifierFlags: [], action: #selector(handleLeftArrow)),
+            
+            // Controls visibility
+            UIKeyCommand(input: "\u{F700}", modifierFlags: [], action: #selector(handleShowController)),
+            UIKeyCommand(input: "\u{F701}", modifierFlags: [], action: #selector(handleShowController)),
+            UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(handleShowController)), // Enter key
+            
+            // Play/Pause with space bar
+            UIKeyCommand(input: " ", modifierFlags: [], action: #selector(togglePlayPause))
+        ]
+    }
+    
+    // Handle physical key presses with Responder Chain
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var handled = false
+        
+        for press in presses {
+            guard let key = press.key else { continue }
+            
+            print("[WakoCapacitorVideoPlayer] Key pressed: \(key.charactersIgnoringModifiers ?? "unknown")")
+            
+            switch key.keyCode {
+            case .keyboardRightArrow:
+                handleRightArrow()
+                handled = true
+                
+            case .keyboardLeftArrow:
+                handleLeftArrow()
+                handled = true
+                
+            case .keyboardUpArrow, .keyboardDownArrow, .keyboardReturn:
+                handleShowController()
+                handled = true
+                
+            case .keyboardSpacebar:
+                togglePlayPause()
+                handled = true
+                
+            default:
+                break
+            }
+        }
+        
+        if !handled {
+            super.pressesBegan(presses, with: event)
+        }
+    }
+    
+    @objc private func handleRightArrow() {
+        // Fast forward 10s
+        let currentTimeValue = mediaPlayer.time.value
+        guard let floatValue = currentTimeValue?.floatValue else { return }
+        
+        let currentTime = floatValue / 1000.0
+        let newTime = currentTime + 10.0
+        
+        print("[WakoCapacitorVideoPlayer] Keyboard: fast forward 10s")
+        mediaPlayer.time = VLCTime(int: Int32(newTime * 1000))
+        showForwardIndicator()
+    }
+    
+    @objc private func handleLeftArrow() {
+        // Rewind 10s
+        let currentTimeValue = mediaPlayer.time.value
+        guard let floatValue = currentTimeValue?.floatValue else { return }
+        
+        let currentTime = floatValue / 1000.0
+        let newTime = max(0, currentTime - 10.0)
+        
+        print("[WakoCapacitorVideoPlayer] Keyboard: rewind 10s")
+        mediaPlayer.time = VLCTime(int: Int32(newTime * 1000))
+        showRewindIndicator()
+    }
+    
+    @objc private func handleShowController() {
+        print("[WakoCapacitorVideoPlayer] Keyboard: show controls")
+        if controlsView.isHidden {
+            toggleControlsVisibility()
         }
     }
 }
