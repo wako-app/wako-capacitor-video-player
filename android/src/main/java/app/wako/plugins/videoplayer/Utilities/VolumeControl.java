@@ -22,7 +22,7 @@ public class VolumeControl {
                     FullscreenExoPlayerFragment.volumeBoost++;
                 }
             } else {
-                // Augmenter le volume normal
+                // Increase normal volume
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0);
             }
         } else {
@@ -30,7 +30,7 @@ public class VolumeControl {
                 // If boost is active, first reduce it
                 FullscreenExoPlayerFragment.volumeBoost--;
             } else {
-                // Sinon diminuer le volume normal
+                // Otherwise decrease normal volume
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0);
             }
         }
