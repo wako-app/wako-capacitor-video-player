@@ -25,6 +25,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -645,16 +646,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
 
-        ConstraintLayout constraintLayout = fragmentView.findViewById(R.id.exo_constraint_layout);
+     
         if (isTvDevice) {
             isChromecastEnabled = false;
             displayMode = "landscape";
             resizeButton.setVisibility(View.GONE);
 
-            if (constraintLayout != null) {
-                constraintLayout.setBackgroundResource(R.color.black_80);
+             if(closeButton != null) {
+                closeButton.setVisibility(View.GONE);
             }
         } else {
+            FrameLayout topBar = fragmentView.findViewById(R.id.top_bar);
+            if(topBar != null) {
+                topBar.setBackgroundResource(R.color.transparent);
+            }
+
+            FrameLayout bottomBar = fragmentView.findViewById(R.id.exo_bottom_bar);
+            if(bottomBar != null) {
+                bottomBar.setBackgroundResource(R.color.transparent);
+            }
+
+            ConstraintLayout constraintLayout = fragmentView.findViewById(R.id.exo_constraint_layout);
             if (constraintLayout != null) {
                 constraintLayout.setBackgroundResource(R.color.black_50);
             }
@@ -704,7 +716,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 controllerVisible = visibility == View.VISIBLE;
                 controllerVisibleFully = playerView.isControllerFullyVisible();
-
+                
                 // // Adjust system bars visibility based on controller visibility
                 // if (visibility == View.VISIBLE) {
                 //     showSystemUI();
@@ -1268,13 +1280,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     progressBar.setVisibility(View.GONE);
                     playerView.setUseController(true);
                     controlsContainer.setVisibility(View.INVISIBLE);
-
+                    
                     // Set volume when player is ready, but only if not on TV
                     if (!isTvDevice && mAudioManager != null) {
                         float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                         float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                         float normalizedVolume = systemVolume / maxVolume;
-
+                        
                         // Check current player volume
                         if (player != null) {
                             float currentPlayerVolume = player.getVolume();
