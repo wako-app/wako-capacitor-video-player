@@ -142,7 +142,7 @@
   <FrameLayout 
     android:id="@+id/exo_bottom_bar"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/exo_styled_bottom_bar_height"
+    android:layout_height="70dp"
     android:layout_marginTop="@dimen/exo_styled_bottom_bar_margin_top"
     android:layout_gravity="bottom"
     android:layoutDirection="ltr"
@@ -266,7 +266,7 @@
     android:layout_width="match_parent"
     android:layout_height="@dimen/exo_styled_progress_layout_height"
     android:layout_gravity="bottom"
-    android:layout_marginBottom="@dimen/exo_styled_progress_margin_bottom"
+    android:layout_marginBottom="62dp"
     app:layout_constraintBottom_toBottomOf="parent"
     app:layout_constraintStart_toStartOf="parent"
     app:layout_constraintEnd_toEndOf="parent"/>
