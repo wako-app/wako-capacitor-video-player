@@ -315,6 +315,18 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     return true;
                 }
 
+                // Check if tap is in the controls area (bottom of screen)
+                float y = e.getY();
+                int viewHeight = playerView.getHeight();
+                int bottomExclusionZoneHeight = viewHeight / 7; // Bottom ~14% for progress bar area
+                boolean inBottomControls = y > (viewHeight - bottomExclusionZoneHeight);
+
+                // If tap is in controls area, let the native controller handle it
+                if (inBottomControls) {
+                    return false;
+                }
+
+                // Outside control areas, manually handle showing/hiding
                 if (controllerVisibleFully) {
                     playerView.hideController();
                 } else {
@@ -397,15 +409,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                 // Ignore gesture controls in exclusion zones
                 if (inTopExclusionZone || inBottomExclusionZone) {
-                    // Still allow single taps for showing/hiding controls
-                    if (event.getAction() == MotionEvent.ACTION_UP) {
-                        if (controllerVisibleFully) {
-                            playerView.hideController();
-                        } else {
-                            playerView.showController();
-                        }
-                    }
-                    return true;
+                    // In exclusion zones, don't handle controller visibility
+                    // as it conflicts with ExoPlayer native controls
+                    return false;
                 }
 
                 // Handle other gestures
@@ -574,7 +580,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                             } else if (currentVolumeNormalized >= 0.5f) {
                                 volumeChange = baseVolumeChange * 0.4f;   // 60% reduction
                             } else {
-                                volumeChange = baseVolumeChange * 0.6f;   // 40% reduction de base
+                                volumeChange = baseVolumeChange * 0.6f;   // 40% base reduction
                             }
 
                             // Apply the volume change in the correct direction
@@ -709,6 +715,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         controlsContainer.setVisibility(View.INVISIBLE);
 
         playerView.setControllerShowTimeoutMs(3000);
+        playerView.setControllerHideOnTouch(false);
         playerView.setControllerVisibilityListener(new PlayerView.ControllerVisibilityListener() {
             @Override
             public void onVisibilityChanged(int visibility) {
@@ -2129,3 +2136,4 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
 }
+
