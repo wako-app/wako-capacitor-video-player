@@ -311,11 +311,30 @@ class PlayerViewController: UIViewController {
         modalPresentationStyle = .fullScreen
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Request update of home indicator auto-hidden state
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
+        
+        // Set the video mode that optimizes for full-screen playback
+        UIViewController.attemptRotationToDeviceOrientation()
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         
         // Disable keyboard support
         resignFirstResponder()
+    }
+    
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        return true
+    }
+    
+    // Force hiding of home indicator
+    override var prefersStatusBarHidden: Bool {
+        return true
     }
 
     private func setupUI() {
@@ -890,6 +909,9 @@ class PlayerViewController: UIViewController {
                 self.castButton.isHidden = true
             })
         }
+        
+        // Update home indicator state
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
     }
     
     @objc private func hideControls() {
@@ -903,6 +925,9 @@ class PlayerViewController: UIViewController {
             self.closeButton.isHidden = true
             self.titleLabel.isHidden = true
             self.castButton.isHidden = true
+            
+            // Update home indicator state
+            self.setNeedsUpdateOfHomeIndicatorAutoHidden()
         })
     }
 
@@ -1511,12 +1536,15 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
             guard let self = self else { return }
             self.updatePlayPauseButton()
             
+            // Update home indicator state
+            self.setNeedsUpdateOfHomeIndicatorAutoHidden()
+            
             switch self.mediaPlayer.state {
             case .buffering:
                 self.loadingIndicator.startAnimating()
                 
             case .opening:
-                // Pas besoin d'ajuster la position ici, on utilise l'option start-time
+                // No need to adjust position here, we use the start-time option
                 print("[WakoCapacitorVideoPlayer] Media opening")
                 
             case .playing:
@@ -1525,21 +1553,21 @@ extension PlayerViewController: VLCMediaPlayerDelegate {
                 if !self.hasStartedPlaying {
                     print("[WakoCapacitorVideoPlayer] First playback started")
                     
-                    // Marquer comme démarré
+                    // Mark as started
                     self.hasStartedPlaying = true
                     
-                    // Ajouter les sous-titres externes une fois que la lecture a commencé
+                    // Add external subtitles once playback has started
                     self.addSubtitlesAfterPlayback()
                     
-                    // Vérifier et activer les sous-titres internes s'ils existent
+                    // Check and enable internal subtitles if they exist
                     self.checkAndEnableSubtitles()
                     
-                    // Après une courte pause pour laisser tout se charger
+                    // After a short delay to let everything load
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        // Sélectionner les pistes préférées
+                        // Select preferred tracks
                         self.selectTracks()
                         
-                        // Notifier que le lecteur est prêt
+                        // Notify that the player is ready
                         let currentTime = Double(self.mediaPlayer.time.value?.intValue ?? 0) / 1000
                         print("[WakoCapacitorVideoPlayer] Sending WakoPlayerReady with currentTime: \(currentTime)")
                         NotificationCenter.default.post(
