@@ -627,8 +627,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
                             // Restore playback if it was paused for seeking
                             if (isChangingPosition && restorePlayState && player != null) {
+                                // Sauvegarde du volume actuel avant de reprendre la lecture
+                                final float currentPlayerVolume = player.getVolume();
+                                
                                 player.play();
                                 restorePlayState = false;
+                                
+                                // Assurons-nous que le volume ne change pas après le seeking
+                                player.setVolume(currentPlayerVolume);
                             }
 
                             return true;
@@ -1288,8 +1294,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     playerView.setUseController(true);
                     controlsContainer.setVisibility(View.INVISIBLE);
                     
-                    // Set volume when player is ready, but only if not on TV
-                    if (!isTvDevice && mAudioManager != null) {
+                    // Set volume when player is ready, but only if not on TV and if it's the first time
+                    if (!isTvDevice && mAudioManager != null && !firstReadyCalled) {
                         float systemVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                         float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                         float normalizedVolume = systemVolume / maxVolume;
@@ -1303,7 +1309,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                                     ", System volume: " + normalizedVolume);
                         }
 
-                        // Set volume to system value
+                        // Set volume to system value only if it's the first time
                         setVolumeLevel(normalizedVolume);
                     }
 
@@ -1366,7 +1372,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
             if (playWhenReady) {
                 // Ensure volume is correctly set when playback starts, but only if not on TV
-                if (!isTvDevice && mAudioManager != null) {
+                // and only after the initial setup, not during seeking operations
+                if (!isTvDevice && mAudioManager != null && firstReadyCalled && !isChangingPosition) {
                     float currentVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                     float maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                     float normalizedVolume = currentVolume / maxVolume;
