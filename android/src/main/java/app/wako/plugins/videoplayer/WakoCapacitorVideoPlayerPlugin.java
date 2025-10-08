@@ -204,13 +204,6 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "isPlaying");
-        String playerId = call.getString("playerId");
-        if (playerId == null) {
-            ret.put("result", false);
-            ret.put("message", "Must provide a PlayerId");
-            call.resolve(ret);
-            return;
-        }
         bridge
                 .getActivity()
                 .runOnUiThread(
@@ -339,7 +332,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "getDuration");
-        String playerId = call.getString("playerId");
+
 
         bridge
                 .getActivity()
@@ -575,7 +568,7 @@ public class WakoCapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         JSObject ret = new JSObject();
         ret.put("method", "getRate");
-        String playerId = call.getString("playerId");
+
 
         bridge
                 .getActivity()
